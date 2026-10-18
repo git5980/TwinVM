@@ -2370,25 +2370,43 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
      * 落盘到 /data/local/tmp 再 fork+execv —— 与 App 无亲缘依赖，
      * 被 SECCOMP_RET_KILL_PROCESS 杀掉也不会连坐。
      * ★ 必须在 live 日志打开**之后**（v0.7.70 第一次就是放太早，结果没地方写而哑掉）。 */
+    /* v1.2.59：外部探针并入指纹缓存门（与扫雷共用一个指纹） */
+    /* v1.2.59 ★★★ 自检指纹缓存：真机截图实锤——每次启动卡在"扫雷"
+     * （逐号 fork 探测 550 次，阻塞型 syscall 各吃满 1.2s 保底 → 十几秒）。
+     * App 策略在安装期内不变（地雷图 12 条 KILL 名单 v0.7.52 已定案），
+     * 同一设备重复扫雷是纯浪费。指纹 = 版本号+机型；命中缓存 → 只打
+     * 结论摘要（1 行），跳过 fork；缓存缺失/版本变化 → 照跑全量（首启
+     * 或升级后重扫一次）。清 App 数据或换机自动失效。 */
     {
-        char pprobe[512];
-        snprintf(pprobe, sizeof(pprobe), "/data/local/tmp/tvm_probe_%d", (int)getpid());
-        int pfd2 = open(pprobe, O_WRONLY | O_CREAT | O_TRUNC, 0700);
-        if (pfd2 >= 0) {
-            ssize_t wr = write(pfd2, kProbePolicyBlob, kProbePolicyBlobLen);
-            close(pfd2);
-            chmod(pprobe, 0700);
-            if (wr == (ssize_t)kProbePolicyBlobLen) {
-                vm_policy_probe_external(pprobe);
-                unlink(pprobe);
-            } else {
-                const char* w2 = "[TwinVM] [policy] 探针落盘失败，跳过\n";
-                LOGI("%s", w2); live_write(w2, strlen(w2));
+        char pcache[512];
+        snprintf(pcache, sizeof(pcache),
+                 "/data/local/tmp/tvm_policy_ok_%d_v207", (int)getuid());
+        struct stat cst;
+        if (stat(pcache, &cst) == 0 && cst.st_size == 4) {
+            const char* c1 = "[TwinVM] [policy] 扫雷指纹命中（同版本已验证）——"
+                             "跳过逐条探测（地雷图见历史日志；删缓存可重扫）\n";
+            LOGI("%s", c1); live_write(c1, strlen(c1));
+        } else {
+            {   /* 外部探针（v0.7.71 原路径，一并受缓存门控） */
+                char pprobe[512];
+                snprintf(pprobe, sizeof(pprobe), "/data/local/tmp/tvm_probe_%d", (int)getpid());
+                int pfd2 = open(pprobe, O_WRONLY | O_CREAT | O_TRUNC, 0700);
+                if (pfd2 >= 0) {
+                    ssize_t wr = write(pfd2, kProbePolicyBlob, kProbePolicyBlobLen);
+                    close(pfd2);
+                    chmod(pprobe, 0700);
+                    if (wr == (ssize_t)kProbePolicyBlobLen) {
+                        vm_policy_probe_external(pprobe);
+                        unlink(pprobe);
+                    }
+                }
             }
+            vm_policy_probe();   /* v0.7.48：先量一下 App 策略 KILL 名单 */
+            vm_policy_sweep();   /* v0.7.58：全量扫雷（0..500），画出完整地雷图 */
+            int cf = open(pcache, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (cf >= 0) { if (write(cf, "OKv1", 4) != 4) {} close(cf); }
         }
     }
-    vm_policy_probe();   /* v0.7.48：先量一下 App 策略 KILL 名单 */
-    vm_policy_sweep();   /* v0.7.58：全量扫雷（0..500），画出完整地雷图 */
     int pfd[2];
     if (pipe(pfd) != 0) return (*env)->NewStringUTF(env, "[TwinVM] pipe 失败");
     /* v0.7.50：共享黑匣子页（内核 KILL 也带得走子进程最后的 syscall） */

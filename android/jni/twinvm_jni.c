@@ -1748,22 +1748,52 @@ static void* tvm_tracer_main(void* arg) {
          *   新停点一到：立即回满速阻塞态。 */
         {
             static int idle_poll = 0;             /* 0=阻塞态 非0=轮询态 */
-            if (!idle_poll) {
+            static int alrm_ok = -1;             /* -1=未测 0=setitimer 被拒 1=可用 */
+            if (alrm_ok < 0) {
+                /* v1.2.71 ★ 真机 v1.2.69/70 实锤：[alrm] 就绪声明打了但
+                 * EINTR 永不命中——最大嫌疑 App seccomp 拒绝 setitimer
+                 * （返回值从未检查）。此处一次性试探：失败即记录并全程
+                 * 改用【时间戳兜底】：连续 300ms 无停点 → 进轮询态。 */
                 struct itimerval iv;
                 iv.it_value.tv_sec = 0; iv.it_value.tv_usec = 200 * 1000;
                 iv.it_interval.tv_sec = 0; iv.it_interval.tv_usec = 0;
-                setitimer(ITIMER_REAL, &iv, NULL);
-                t = waitpid(-1, &st, __WALL);
-                if (t < 0 && errno == EINTR) {
-                    idle_poll = 1;                /* 超时打断：进轮询态 */
-                    t = 0;
-                    static int ei_log = 0;
-                    if (ei_log < 3) { ei_log++;
-                        ptrace_log("[alrm] EINTR 命中 → 进轮询态（第 %d 次）", ei_log);
-                    }
-                } else {
+                alrm_ok = (setitimer(ITIMER_REAL, &iv, NULL) == 0) ? 1 : 0;
+                if (alrm_ok) {
                     struct itimerval zv = {{0, 0}, {0, 0}};
                     setitimer(ITIMER_REAL, &zv, NULL);
+                }
+                ptrace_log("[alrm] setitimer %s（%s）",
+                           alrm_ok ? "可用" : "被拒→时间戳兜底",
+                           alrm_ok ? "SIGALRM 打断 waitpid" : "静默 300ms 判定");
+            }
+            if (alrm_ok) {
+                if (!idle_poll) {
+                    struct itimerval iv;
+                    iv.it_value.tv_sec = 0; iv.it_value.tv_usec = 200 * 1000;
+                    iv.it_interval.tv_sec = 0; iv.it_interval.tv_usec = 0;
+                    setitimer(ITIMER_REAL, &iv, NULL);
+                    t = waitpid(-1, &st, __WALL);
+                    if (t < 0 && errno == EINTR) {
+                        idle_poll = 1;
+                        t = 0;
+                        static int ei_log = 0;
+                        if (ei_log < 3) { ei_log++;
+                            ptrace_log("[alrm] EINTR 命中 → 进轮询态（第 %d 次）", ei_log);
+                        }
+                    } else {
+                        struct itimerval zv = {{0, 0}, {0, 0}};
+                        setitimer(ITIMER_REAL, &zv, NULL);
+                    }
+                }
+            } else {
+                /* v1.2.71：setitimer 被拒路径——改用 WNOHANG 轮询（20ms），
+                 * 静默期驱动 graceful（吞吐代价只在静默期，忙时立即返回）。 */
+                t = waitpid(-1, &st, WNOHANG | __WALL);
+                if (t == 0) {
+                    struct timespec ts = {0, 20 * 1000 * 1000};
+                    nanosleep(&ts, NULL);
+                    if (tvm_graceful_check(1)) { g_t_status = 0; g_t_done = 1; break; }
+                    continue;
                 }
             }
             if (idle_poll) {

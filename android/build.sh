@@ -92,7 +92,7 @@ echo "== 3. libtwinvm.so（引擎核心，arm64） =="
 echo "== 4. Java（ECJ，无 lambda——匿名内部类纪律） =="
 java -jar "$ECJ" -source 8 -target 8 -nowarn \
     -bootclasspath "$PLATFORM" -d "$OUT/obj" \
-    src/dev/twinbox/vm/Native.java src/dev/twinbox/vm/MainActivity.java
+    src/dev/twinbox/vm/Native.java src/dev/twinbox/vm/MainActivity.java src/dev/twinbox/vm/RunService.java
 
 echo "== 5. dex（d8） =="
 "$BT/d8" --release --min-api 24 --lib "$PLATFORM" \
@@ -110,7 +110,7 @@ if [ ! -f twinvm.keystore ]; then
         -keyalg RSA -keysize 2048 -validity 10000 -alias twinvm \
         -dname "CN=TwinVM" >/dev/null 2>&1
 fi
-OUTAPK=TwinVM-Stage4-v1.2.69.apk
+OUTAPK=TwinVM-Stage4-v1.2.70.apk
 "$BT/apksigner" sign --ks twinvm.keystore --ks-pass pass:twinvm123 \
     --out "$OUTAPK" "$OUT/twinvm.aligned.apk"
 

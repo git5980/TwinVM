@@ -184,7 +184,13 @@ public class MainActivity extends Activity implements View.OnClickListener {
         final boolean isRun = "run".equals(v.getTag());
         /* v0.8.9 ★ 实时进度：不再只显示"运行中"干等。
          * 每 400ms 读 live 日志尾部并刷新界面，同时显示已运行秒数与日志大小。 */
-        if (mRunLock != null) mRunLock.acquire(10 * 60 * 1000L);   /* v1.2.69：防 freezer */
+        if (mRunLock != null) mRunLock.acquire(10 * 60 * 1000L);   /* v1.2.69：防 CPU 睡眠 */
+        /* v1.2.70 ★：前台服务才是 freezer 豁免正解（WakeLock 不阻止 cgroup 冻结） */
+        try {
+            android.content.Intent si = new android.content.Intent(this, RunService.class);
+            if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(si);
+            else startService(si);
+        } catch (Throwable ignore) { }
         mOut.setText("\u25b6 启动中…\n（正在解析 ROM / 安装拦截器）");
         /* v1.2.51：授权跟手势当场弹（不藏菜单）——首次点"运行"请求存储权限 */
         if (!hasStoragePermission()) {
@@ -236,6 +242,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 }
                 running[0] = false;
                 if (mRunLock != null) mRunLock.release();   /* v1.2.69：收场释放 */
+                try { stopService(new android.content.Intent(MainActivity.this, RunService.class)); } catch (Throwable ignore) { }
                 try {
                     android.app.NotificationManager nm = (android.app.NotificationManager)
                             getSystemService(NOTIFICATION_SERVICE);

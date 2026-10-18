@@ -1697,26 +1697,40 @@ static void* tvm_tracer_main(void* arg) {
         /* v1.2.28 ★ 阻塞等待（原来是 WNOHANG + usleep(2000)，那 2ms 就是吞吐地板）。
          * 需要处理"体检/抓帧"标志时，看门狗会 pthread_kill 打断这里 → errno==EINTR
          * → 回到循环顶部处理标志 → 再重新阻塞。 */
-        /* v1.2.62：WNOHANG + 10ms——真静默期 tracer 必须醒着驱动 graceful 检查
-         * （阻塞式 waitpid 在 guest 睡死时永远不返回，检查无从谈起）。
-         * 吞吐代价：10ms/次轮询空转 vs 每 syscall 两停点（每次 1~10μs 的
-         * syscall 间隙）——忙时几乎总是直接命中，空转只在真静默时发生。 */
-        t = waitpid(-1, &st, WNOHANG | __WALL);
-        if (t == 0) {
-            struct timespec ts = {0, 10 * 1000 * 1000};   /* 10ms */
-            nanosleep(&ts, NULL);
-            /* v1.2.62：静默期驱动 graceful 检查（复用停点处理块里的逻辑） */
-            {
-                static time_t t_last_chk2 = 0;
-                time_t tnow = time(NULL);
-                if (tnow != t_last_chk2) {
-                    t_last_chk2 = tnow;
-                    /* 与停点块共享：直接置一个标志让下轮停点检查？不行——
-                     * 没停点。就地执行判定（独立副本，写同段日志） */
-                    if (tvm_graceful_check(1)) { g_t_status = 0; g_t_done = 1; break; }
+        /* v1.2.63 ★★★ 混合模式（修 v1.2.62 自伤：WNOHANG+10ms 全程轮询把
+         * 吞吐拖到 ~100 停点/s，真机日志 1063/11s=97/s 铁证；ART init 几万
+         * 停点从 40s 变 40 分钟）。
+         *   忙时：阻塞式 waitpid（内核唤醒即处理，满速——v1.2.28 原味），
+         *         前挂 200ms setitimer 保底（SIGALRM 已定向本线程、空 handler）；
+         *   连续 200ms 无停点：SIGALRM 打断 waitpid（EINTR）→ 降级
+         *         WNOHANG+20ms 轮询态（驱动 graceful 检查）；
+         *   新停点一到：立即回满速阻塞态。 */
+        {
+            static int idle_poll = 0;             /* 0=阻塞态 非0=轮询态 */
+            if (!idle_poll) {
+                struct itimerval iv;
+                iv.it_value.tv_sec = 0; iv.it_value.tv_usec = 200 * 1000;
+                iv.it_interval.tv_sec = 0; iv.it_interval.tv_usec = 0;
+                setitimer(ITIMER_REAL, &iv, NULL);
+                t = waitpid(-1, &st, __WALL);
+                if (t < 0 && errno == EINTR) {
+                    idle_poll = 1;                /* 超时打断：进轮询态 */
+                    t = 0;
+                } else {
+                    struct itimerval zv = {{0, 0}, {0, 0}};
+                    setitimer(ITIMER_REAL, &zv, NULL);
                 }
             }
-            continue;
+            if (idle_poll) {
+                t = waitpid(-1, &st, WNOHANG | __WALL);
+                if (t == 0) {
+                    struct timespec ts = {0, 20 * 1000 * 1000};   /* 20ms */
+                    nanosleep(&ts, NULL);
+                    if (tvm_graceful_check(1)) { g_t_status = 0; g_t_done = 1; break; }
+                    continue;                     /* 轮询态：等下个停点 */
+                }
+                idle_poll = 0;                    /* 有停点：回满速 */
+            }
         }
         if (t == 0) {
             /* v1.2.20 ★★★ 这里**不再尝试 PTRACE_INTERRUPT**。

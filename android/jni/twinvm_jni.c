@@ -654,6 +654,12 @@ static volatile int g_t_done, g_t_status, g_t_events;
  * 正解：**用 guest 的真实活动（任何 ptrace 停点）来重置计时** ——
  * 只要 guest 还在产生停点，就说明它在前进，绝不能判卡死。 */
 static volatile unsigned long long g_guest_ticks = 0;   /* 每个 ptrace 停点 +1 */
+/* v1.2.57：优雅关机 v2 的独立时钟——只在**真实控制台输出**时更新（v1.2.19
+ * 的 last_out 会被收尾打转刷新，不可用作"演完了"判据）。 */
+static time_t g_last_real_out = 0;                  /* 最后一次真实输出的时刻 */
+static unsigned long long g_ticks_at_real_out = 0;  /* 该时刻的停点总数 */
+static unsigned long long g_guest_ticks_prev_sec = 0; /* 秒采样基准 */
+static unsigned long long g_sec_now = 0;            /* 秒计数 */
 static volatile unsigned long long g_t_last_pc = 0;     /* 最近一次 syscall 停点的 pc */
 static volatile unsigned long long g_mmap_hint = 0, g_mmap_len = 0;   /* v1.2.23：匿名 mmap 的 hint */
 static volatile int g_mmap_pend = 0;
@@ -2442,6 +2448,7 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
             if (n > 0) {
                 len += (size_t)n;
                 last_out = time(NULL);
+                { time_t rt = time(NULL); g_last_real_out = rt; g_ticks_at_real_out = g_guest_ticks; }
                 if (live_total < VM_LIVE_MAX) {
                     size_t w = (size_t)n;
                     if (live_total + w > VM_LIVE_MAX) w = VM_LIVE_MAX - live_total;
@@ -2476,26 +2483,38 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
         if (pr > 0 && (pf.revents & (POLLHUP | POLLERR | POLLNVAL))) break;
         if (pr < 0 && errno != EINTR) break;
         time_t now = time(NULL);
-        /* v1.2.56 ★★★ 优雅关机补刀（方案二：剧场保安收场）。
-         * 真机 v1.2.55 实锤：stress-all-pass 打印后 DestroyJavaVM 的
-         * WaitForRuntimeShutdown 死等（Shutdown 线程们已安静但主线程不退）
-         * → 槽位挂"运行中"，要手动停。
-         * 判据（三件全齐才动手，避免误杀干活中的 guest）：
-         *   ① 控制台已有过输出（guest 跑过东西）；
-         *   ② 输出静默 ≥ VM_EXIT_GRACE_S（8s）——宽限 Shutdown 线程收尾；
-         *   ③ guest 停点无增长（Δticks==0）——真在挂，不在干活。
-         * 动作：SIGTERM → 2s → SIGKILL（先礼后兵），日志留 [graceful] 线。 */
+        /* v1.2.57 ★★★ 优雅关机补刀 v2（v1.2.56 判据失效修法）。
+         * v1.2.56 真机实锤：判据 ②③ 永远不同时满足——v1.2.19 的"活动即前进"
+         * 只要 guest 有**任何**停点就重置 last_out，而 ART 收尾的 Shutdown
+         * 线程在 set_tid_address/读 /proc 的循环里打转，停点不断 → 静默计时
+         * 永远清零 → graceful 永不触发（真机日志：stress 后停点又跑了 51 次，
+         * [graceful] 一条没出）。
+         * v2 判据（独立时钟 + 低频密度）：
+         *   ① len > 0（控制台出过东西）；
+         *   ② last_real_out（**仅真实控制台输出**重置的独立时钟）≥ GRACE_S；
+         *   ③ 停点频率骤降：GRACE_S 窗口内的停点增量 / 运行期峰值速率
+         *      < 5%——收尾打转是零星读 proc，正常干活是每秒数千停点。 */
         {
             static time_t grace_killed = 0;
-            if (!grace_killed && len > 0 && now - last_out >= VM_EXIT_GRACE_S
-                && g_guest_ticks == last_ticks) {
+            static unsigned long long peak_rate = 0;      /* 峰值 每秒停点数 */
+            if (g_guest_ticks - g_guest_ticks_prev_sec >= 1) {
+                /* 每秒采样一次速率，维护峰值（供 ③ 用） */
+                if (g_guest_ticks - g_guest_ticks_prev_sec > peak_rate)
+                    peak_rate = g_guest_ticks - g_guest_ticks_prev_sec;
+                g_guest_ticks_prev_sec = g_guest_ticks;
+                g_sec_now++;
+            }
+            if (!grace_killed && len > 0
+                && g_last_real_out > 0 && now - g_last_real_out >= VM_EXIT_GRACE_S
+                && (g_guest_ticks - g_ticks_at_real_out) * 20 < peak_rate * (unsigned long long)VM_EXIT_GRACE_S) {
                 grace_killed = now;
                 int gst = 0; (void)gst;
-                char gb[320];
+                char gb[384];
                 int gk = snprintf(gb, sizeof(gb),
-                    "[TwinVM] [graceful] 输出静默 %lds 且停点无增长（总 %llu 次）——"
-                    "判定 main 已返回、DestroyJavaVM 死等 → 优雅关机：SIGTERM→2s→SIGKILL\n",
-                    (long)(now - last_out), g_guest_ticks);
+                    "[TwinVM] [graceful] 真实输出静默 %lds、停点频率 %llu/%llu 峰值——"
+                    "判定 main 已返回、收尾死等 → 优雅关机：SIGTERM→2s→SIGKILL\n",
+                    (long)(now - g_last_real_out),
+                    g_guest_ticks - g_ticks_at_real_out, peak_rate);
                 live_write(gb, (size_t)gk);
                 if (len + (size_t)gk < cap) { memcpy(buf + len, gb, (size_t)gk); len += (size_t)gk; }
                 kill(pid, SIGTERM);

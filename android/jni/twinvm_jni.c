@@ -947,9 +947,24 @@ static int tvm_graceful_check(int kill_it) {
     static unsigned long long t_peak = 0, t_prev = 0;
     static time_t t_rate_sec = 0;
     static time_t t_grace_done = 0;
+    static time_t t_watch_last = 0;              /* v1.2.65：tracer 侧 watch */
     time_t tnow = time(NULL);
     if (tnow == t_last_chk) return 0;           /* 每秒至多一次 */
     t_last_chk = tnow;
+    /* v1.2.65 ★ tracer 侧 watch 心跳（主线程死后也有观测）：真实输出停止
+     * 2s 后每 2s 打判据值——下次日志自带答案。 */
+    if (g_last_real_out > 0 && tnow - g_last_real_out >= 2
+        && tnow - t_watch_last >= 2) {
+        t_watch_last = tnow;
+        char wb[288];
+        int wk = snprintf(wb, sizeof(wb),
+            "[TwinVM] [t-watch] 距真实输出 %lds、窗口停点 %llu、"
+            "峰值 %llu/s（触发需：静默≥%ds 且 N*20<峰*%d）\n",
+            (long)(tnow - g_last_real_out),
+            g_guest_ticks - g_ticks_at_real_out, t_peak,
+            VM_EXIT_GRACE_S, VM_EXIT_GRACE_S);
+        live_write(wb, (size_t)wk);
+    }
     if (t_rate_sec == 0) t_rate_sec = tnow;
     if (tnow != t_rate_sec) {                    /* 墙钟秒采样峰值 */
         unsigned long long d = g_guest_ticks - t_prev;

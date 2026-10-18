@@ -33,6 +33,10 @@ tools/         辅助脚本（真机自检循环等）
 cd android && bash build.sh        # 需要 NDK r26+ / build-tools 34 / ECJ / d8
 ```
 
+## 详细文档
+
+**[项目说明.md](项目说明.md)** —— 目标 · 当前进度 · 踩坑实录（全程复盘）
+
 ## 状态（2026-10-18）
 
 - **Hello 里程碑达成**：guest Java 全链输出（v1.2.54）

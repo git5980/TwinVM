@@ -2523,16 +2523,25 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
         {
             static time_t grace_killed = 0;
             static unsigned long long peak_rate = 0;      /* 峰值 每秒停点数 */
-            if (g_guest_ticks - g_guest_ticks_prev_sec >= 1) {
-                /* 每秒采样一次速率，维护峰值（供 ③ 用） */
-                if (g_guest_ticks - g_guest_ticks_prev_sec > peak_rate)
-                    peak_rate = g_guest_ticks - g_guest_ticks_prev_sec;
-                g_guest_ticks_prev_sec = g_guest_ticks;
-                g_sec_now++;
+            /* v1.2.59 ★ 修 v1.2.58 的峰值退化：旧条件"差 ≥1"在 poll 每轮
+             * （~1ms）都为真 → prev_sec 每轮刷新 → 增量永远 1~2 →
+             * peak_rate ≈ 2 → 判据 ③ (N*20 < 2*8=16) 永假。
+             * 正解：按**真实墙钟秒**采样——秒变才结算。 */
+            {
+                static time_t rate_sec = 0;
+                if (rate_sec == 0) rate_sec = now;
+                if (now != rate_sec) {
+                    unsigned long long delta = g_guest_ticks - g_guest_ticks_prev_sec;
+                    if (delta > peak_rate) peak_rate = delta;
+                    g_guest_ticks_prev_sec = g_guest_ticks;
+                    rate_sec = now;
+                    g_sec_now++;
+                }
             }
+            unsigned long long peak_eff = peak_rate > 1000 ? peak_rate : 1000;  /* 下限保护 */
             if (!grace_killed && len > 0
                 && g_last_real_out > 0 && now - g_last_real_out >= VM_EXIT_GRACE_S
-                && (g_guest_ticks - g_ticks_at_real_out) * 20 < peak_rate * (unsigned long long)VM_EXIT_GRACE_S) {
+                && (g_guest_ticks - g_ticks_at_real_out) * 20 < peak_eff * (unsigned long long)VM_EXIT_GRACE_S) {
                 grace_killed = now;
                 int gst = 0; (void)gst;
                 char gb[384];
@@ -2540,7 +2549,7 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
                     "[TwinVM] [graceful] 真实输出静默 %lds、停点频率 %llu/%llu 峰值——"
                     "判定 main 已返回、收尾死等 → 优雅关机：SIGTERM→2s→SIGKILL\n",
                     (long)(now - g_last_real_out),
-                    g_guest_ticks - g_ticks_at_real_out, peak_rate);
+                    g_guest_ticks - g_ticks_at_real_out, peak_eff);
                 live_write(gb, (size_t)gk);
                 if (len + (size_t)gk < cap) { memcpy(buf + len, gb, (size_t)gk); len += (size_t)gk; }
                 kill(pid, SIGTERM);

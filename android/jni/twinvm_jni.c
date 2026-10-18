@@ -657,6 +657,7 @@ static volatile unsigned long long g_guest_ticks = 0;   /* 每个 ptrace 停点 
 /* v1.2.57：优雅关机 v2 的独立时钟——只在**真实控制台输出**时更新（v1.2.19
  * 的 last_out 会被收尾打转刷新，不可用作"演完了"判据）。 */
 static time_t g_last_real_out = 0;                  /* 最后一次真实输出的时刻 */
+static char g_logs_dir[480] = "";                   /* v1.2.61：live 日志目录（缓存用） */
 static unsigned long long g_ticks_at_real_out = 0;  /* 该时刻的停点总数 */
 static unsigned long long g_guest_ticks_prev_sec = 0; /* 秒采样基准 */
 static unsigned long long g_sec_now = 0;            /* 秒计数 */
@@ -2362,6 +2363,10 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
         const char* lp = (*env)->GetStringUTFChars(env, liveLog, NULL);
         if (lp) {
             g_live_fd = open(lp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            /* v1.2.61：记住日志目录（扫雷指纹缓存放这里——App 必可写） */
+            const char* slash = strrchr(lp, '/');
+            if (slash && (size_t)(slash - lp) < sizeof(g_logs_dir))
+                snprintf(g_logs_dir, sizeof(g_logs_dir), "%.*s", (int)(slash - lp), lp);
             (*env)->ReleaseStringUTFChars(env, liveLog, lp);
         }
     }
@@ -2378,9 +2383,11 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
      * 结论摘要（1 行），跳过 fork；缓存缺失/版本变化 → 照跑全量（首启
      * 或升级后重扫一次）。清 App 数据或换机自动失效。 */
     {
+        /* v1.2.61 ★ 缓存路径修复：/data/local/tmp 现代 Android 不许 App 写
+         * （缓存永远写不进→每启都全量扫雷→"卡一下"没修掉）。改放 live 日志
+         * 同目录（Documents/TwinVM，App 必可写）。版本号入文件名，升级自动重扫。 */
         char pcache[512];
-        snprintf(pcache, sizeof(pcache),
-                 "/data/local/tmp/tvm_policy_ok_%d_v207", (int)getuid());
+        snprintf(pcache, sizeof(pcache), "%s/policy_ok_v211", g_logs_dir[0] ? g_logs_dir : ".");
         struct stat cst;
         if (stat(pcache, &cst) == 0 && cst.st_size == 4) {
             const char* c1 = "[TwinVM] [policy] 扫雷指纹命中（同版本已验证）——"
@@ -2539,7 +2546,28 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
                 }
             }
             unsigned long long peak_eff = peak_rate > 1000 ? peak_rate : 1000;  /* 下限保护 */
-            if (!grace_killed && len > 0
+            {
+                static time_t watch_last = 0;
+                if (g_last_real_out > 0 && now - g_last_real_out >= 2
+                    && now - watch_last >= 2) {
+                    watch_last = now;
+                    char wb[256];
+                    int wk = snprintf(wb, sizeof(wb),
+                        "[TwinVM] [graceful-watch] 距真实输出 %lds、窗口停点 %llu、"
+                        "峰值 %llu/s（判据：静默≥%ds 且 N*20<峰值*%d）\n",
+                        (long)(now - g_last_real_out),
+                        g_guest_ticks - g_ticks_at_real_out, peak_eff,
+                        VM_EXIT_GRACE_S, VM_EXIT_GRACE_S);
+                    live_write(wb, (size_t)wk);
+                }
+            }
+
+            /* v1.2.61 ★★★ 真根因：v1.2.56~60 五版全部失效的总闸——`len > 0`
+             * 检查的是 console 管道，而 v1.1.6 已把 guest 输出改道直写 live
+             * 文件（管道在 ART 时代恒干涸，len 恒 0）。本地模拟实锤：去掉
+             * 此门后收尾打转场景 t=13s 触发、真干活 5000/s 场景不误杀。
+             * g_last_real_out > 0 已蕴含"出过真实输出"。 */
+            if (!grace_killed
                 && g_last_real_out > 0 && now - g_last_real_out >= VM_EXIT_GRACE_S
                 && (g_guest_ticks - g_ticks_at_real_out) * 20 < peak_eff * (unsigned long long)VM_EXIT_GRACE_S) {
                 grace_killed = now;

@@ -54,9 +54,24 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 == PackageManager.PERMISSION_GRANTED;
     }
 
+    private android.os.PowerManager.WakeLock mRunLock;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        /* v1.2.69 ★★★ 五版灵异终局定罪：Android 16 cgroup freezer。
+         * 病理：无 WakeLock 的 App 在"输出停止"后数秒被系统判定空闲 →
+         * 进程整体冻结（guest+tracer+主线程全部挂起，无声无息）→
+         * stress 后 [beat]/[chk]/watch 全停（v1.2.66~68 三版取证实锤：
+         * 无条件心跳都会停=线程不在执行）；TA 手动停止→解冻→导出日志成功。
+         * 治：运行期间持 PARTIAL_WAKE_LOCK（CPU 保持调度），停止时释放。 */
+        android.os.PowerManager pm = (android.os.PowerManager)
+                getSystemService(POWER_SERVICE);
+        if (pm != null) {
+            mRunLock = pm.newWakeLock(
+                    android.os.PowerManager.PARTIAL_WAKE_LOCK, "TwinVM:run");
+            mRunLock.setReferenceCounted(false);
+        }
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -169,6 +184,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
         final boolean isRun = "run".equals(v.getTag());
         /* v0.8.9 ★ 实时进度：不再只显示"运行中"干等。
          * 每 400ms 读 live 日志尾部并刷新界面，同时显示已运行秒数与日志大小。 */
+        if (mRunLock != null) mRunLock.acquire(10 * 60 * 1000L);   /* v1.2.69：防 freezer */
         mOut.setText("\u25b6 启动中…\n（正在解析 ROM / 安装拦截器）");
         /* v1.2.51：授权跟手势当场弹（不藏菜单）——首次点"运行"请求存储权限 */
         if (!hasStoragePermission()) {
@@ -219,6 +235,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
                     result = "异常: " + t;
                 }
                 running[0] = false;
+                if (mRunLock != null) mRunLock.release();   /* v1.2.69：收场释放 */
                 try {
                     android.app.NotificationManager nm = (android.app.NotificationManager)
                             getSystemService(NOTIFICATION_SERVICE);

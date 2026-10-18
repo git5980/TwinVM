@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="dev.twinbox.vm"
-    android:versionCode="218"
-    android:versionName="1.2.68">
+    android:versionCode="219"
+    android:versionName="1.2.69">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="27" />
 
@@ -10,6 +10,8 @@
     <!-- v1.2.51：日志写公共 Documents/TwinVM（targetSdk=27 旧存储模型，
          运行时授权；拒授自动回退 App 私有目录） -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <!-- v1.2.69：防 freezer（运行期持 PARTIAL_WAKE_LOCK） -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <application
         android:label="@string/app_name"
         android:theme="@android:style/Theme.Material.NoActionBar"

@@ -939,6 +939,50 @@ static size_t tvm_read_tracee(pid_t t, unsigned long long addr, size_t n, char* 
     if (tvm_read_pv(t, addr, n, out) == 0) return n;
     return 0;                     /* 失败：返回 0（老语义），errno 已由 pv 落日志 */
 }
+
+/* v1.2.62 ★ 优雅关机 v6：判定核心（tracer 线程专用，停点驱动+静默驱动共用）。
+ * 返回 1=已触发（调用方应退出示踪循环）。 */
+static int tvm_graceful_check(int kill_it) {
+    static time_t t_last_chk = 0;
+    static unsigned long long t_peak = 0, t_prev = 0;
+    static time_t t_rate_sec = 0;
+    static time_t t_grace_done = 0;
+    time_t tnow = time(NULL);
+    if (tnow == t_last_chk) return 0;           /* 每秒至多一次 */
+    t_last_chk = tnow;
+    if (t_rate_sec == 0) t_rate_sec = tnow;
+    if (tnow != t_rate_sec) {                    /* 墙钟秒采样峰值 */
+        unsigned long long d = g_guest_ticks - t_prev;
+        if (d > t_peak) t_peak = d;
+        t_prev = g_guest_ticks;
+        t_rate_sec = tnow;
+    }
+    unsigned long long peak_eff = t_peak > 1000 ? t_peak : 1000;
+    if (t_grace_done || g_last_real_out <= 0) return 0;
+    if (tnow - g_last_real_out < VM_EXIT_GRACE_S) return 0;
+    if ((g_guest_ticks - g_ticks_at_real_out) * 20
+            >= peak_eff * (unsigned long long)VM_EXIT_GRACE_S) return 0;
+    t_grace_done = tnow;
+    char gb[384];
+    int gk = snprintf(gb, sizeof(gb),
+        "[TwinVM] [graceful] 真实输出静默 %lds、窗口停点 %llu、峰值 %llu/s"
+        " —— tracer 代执行优雅关机：SIGTERM→2s→SIGKILL\n",
+        (long)(tnow - g_last_real_out),
+        g_guest_ticks - g_ticks_at_real_out, peak_eff);
+    live_write(gb, (size_t)gk);
+    if (kill_it) {
+        int gst = 0;
+        kill(g_t_pid, SIGTERM);
+        for (int gw = 0; gw < 20; gw++) {
+            if (waitpid(g_t_pid, &gst, WNOHANG) == g_t_pid) break;
+            usleep(100 * 1000);
+        }
+        if (waitpid(g_t_pid, &gst, WNOHANG) != g_t_pid)
+            kill(g_t_pid, SIGKILL);
+    }
+    return 1;
+}
+
 static void tvm_tee_stdio(pid_t t, long nr, const unsigned long long* a) {
     /* v1.2.60 ★★★ 时钟更新必须在 budget 之前！v1.2.59 真机实锤：启动期
      * stderr tee（44+ 次）耗光 256 预算 → budget<=0 提前 return →
@@ -1651,7 +1695,27 @@ static void* tvm_tracer_main(void* arg) {
         /* v1.2.28 ★ 阻塞等待（原来是 WNOHANG + usleep(2000)，那 2ms 就是吞吐地板）。
          * 需要处理"体检/抓帧"标志时，看门狗会 pthread_kill 打断这里 → errno==EINTR
          * → 回到循环顶部处理标志 → 再重新阻塞。 */
-        t = waitpid(-1, &st, __WALL);
+        /* v1.2.62：WNOHANG + 10ms——真静默期 tracer 必须醒着驱动 graceful 检查
+         * （阻塞式 waitpid 在 guest 睡死时永远不返回，检查无从谈起）。
+         * 吞吐代价：10ms/次轮询空转 vs 每 syscall 两停点（每次 1~10μs 的
+         * syscall 间隙）——忙时几乎总是直接命中，空转只在真静默时发生。 */
+        t = waitpid(-1, &st, WNOHANG | __WALL);
+        if (t == 0) {
+            struct timespec ts = {0, 10 * 1000 * 1000};   /* 10ms */
+            nanosleep(&ts, NULL);
+            /* v1.2.62：静默期驱动 graceful 检查（复用停点处理块里的逻辑） */
+            {
+                static time_t t_last_chk2 = 0;
+                time_t tnow = time(NULL);
+                if (tnow != t_last_chk2) {
+                    t_last_chk2 = tnow;
+                    /* 与停点块共享：直接置一个标志让下轮停点检查？不行——
+                     * 没停点。就地执行判定（独立副本，写同段日志） */
+                    if (tvm_graceful_check(1)) { g_t_status = 0; g_t_done = 1; break; }
+                }
+            }
+            continue;
+        }
         if (t == 0) {
             /* v1.2.20 ★★★ 这里**不再尝试 PTRACE_INTERRUPT**。
              * 真机 v1.2.19 实锤：`PTRACE_INTERRUPT 失败 errno=5`（EIO）——
@@ -1674,6 +1738,19 @@ static void* tvm_tracer_main(void* arg) {
          * 在停点执行——ptrace 请求只有本线程有资格（教训五第五击）。
          * tracee 此刻睡在 futex，本次停点是 PTRACE_SYSCALL 的即时返回。 */
         g_guest_ticks++;                     /* v1.2.19：任何停点都算"guest 在前进" */
+        /* v1.2.62 ★★★ 优雅关机 v6·架构级：判定搬到 **tracer 线程**（真机
+         * v1.2.61 实锤：主线程在 guest 启动 38~40s 间悄然死亡——alive 心跳
+         * 与 graceful-watch 同时停摆，而 tracer 的 tee/trace 照常打到
+         * stress 输出之后。主线程一死，驻留其上的优雅关机全成空谈。
+         * tracer 是永不退场的示踪者：guest 的每个停点都经它的手——
+         * 判定在这里做，主线程死活无关。停点驱动天然节流：收尾打转
+         * 每秒几十停点=每秒检查几十次；真静默时 waitpid 阻塞=不空转。 */
+        {   /* v1.2.62：判定抽成公共函数（停点驱动 + 静默驱动共用） */
+            if (tvm_graceful_check(1)) {
+                g_t_status = 0; g_t_done = 1;
+                break;                         /* 终局：退出示踪循环 */
+            }
+        }
         if (g_hang_probe && t == g_t_pid) {
             g_hang_probe = 0;
             struct tvm_arm_regs hr;

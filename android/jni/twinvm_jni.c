@@ -951,6 +951,17 @@ static int tvm_graceful_check(int kill_it) {
     time_t tnow = time(NULL);
     if (tnow == t_last_chk) return 0;           /* 每秒至多一次 */
     t_last_chk = tnow;
+    {   /* v1.2.67 ★ 灵异排查：check 到底在跑吗（前 60 次逐条直播） */
+        static int dbg_n = 0;
+        if (dbg_n < 60) { dbg_n++;
+            char db[192];
+            int dk = snprintf(db, sizeof(db),
+                "[chk] #%d t=%ld 距真出%lds g_lro=%ld\n",
+                dbg_n, (long)tnow, g_last_real_out ? (long)(tnow - g_last_real_out) : -1L,
+                (long)g_last_real_out);
+            live_write(db, (size_t)dk);
+        }
+    }
     /* v1.2.65 ★ tracer 侧 watch 心跳（主线程死后也有观测）：真实输出停止
      * 2s 后每 2s 打判据值——下次日志自带答案。 */
     if (g_last_real_out > 0 && tnow - g_last_real_out >= 2

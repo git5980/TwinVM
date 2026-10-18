@@ -40,6 +40,11 @@
 #ifndef VM_HANG_SILENCE_S
 #define VM_HANG_SILENCE_S 90   /* v0.7.60：示踪版每 syscall 两次停点，guest 显著变慢——放宽 */
 #endif
+/* v1.2.56：优雅关机宽限（秒）。真机 v1.2.55 实测 ART 收尾活动在
+ * stress-all-pass 后 ~3s 内完全静止；8s 已是 2.6 倍裕量。 */
+#ifndef VM_EXIT_GRACE_S
+#define VM_EXIT_GRACE_S 8
+#endif
 #ifndef VM_HANG_TOTAL_S
 #define VM_HANG_TOTAL_S  240   /* v0.7.60：同步放宽总时长（原 120s） */
 #endif
@@ -2471,6 +2476,38 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
         if (pr > 0 && (pf.revents & (POLLHUP | POLLERR | POLLNVAL))) break;
         if (pr < 0 && errno != EINTR) break;
         time_t now = time(NULL);
+        /* v1.2.56 ★★★ 优雅关机补刀（方案二：剧场保安收场）。
+         * 真机 v1.2.55 实锤：stress-all-pass 打印后 DestroyJavaVM 的
+         * WaitForRuntimeShutdown 死等（Shutdown 线程们已安静但主线程不退）
+         * → 槽位挂"运行中"，要手动停。
+         * 判据（三件全齐才动手，避免误杀干活中的 guest）：
+         *   ① 控制台已有过输出（guest 跑过东西）；
+         *   ② 输出静默 ≥ VM_EXIT_GRACE_S（8s）——宽限 Shutdown 线程收尾；
+         *   ③ guest 停点无增长（Δticks==0）——真在挂，不在干活。
+         * 动作：SIGTERM → 2s → SIGKILL（先礼后兵），日志留 [graceful] 线。 */
+        {
+            static time_t grace_killed = 0;
+            if (!grace_killed && len > 0 && now - last_out >= VM_EXIT_GRACE_S
+                && g_guest_ticks == last_ticks) {
+                grace_killed = now;
+                int gst = 0; (void)gst;
+                char gb[320];
+                int gk = snprintf(gb, sizeof(gb),
+                    "[TwinVM] [graceful] 输出静默 %lds 且停点无增长（总 %llu 次）——"
+                    "判定 main 已返回、DestroyJavaVM 死等 → 优雅关机：SIGTERM→2s→SIGKILL\n",
+                    (long)(now - last_out), g_guest_ticks);
+                live_write(gb, (size_t)gk);
+                if (len + (size_t)gk < cap) { memcpy(buf + len, gb, (size_t)gk); len += (size_t)gk; }
+                kill(pid, SIGTERM);
+                for (int gw = 0; gw < 20; gw++) {         /* 2s 礼让窗口 */
+                    if (waitpid(pid, &gst, WNOHANG) == pid) break;
+                    usleep(100 * 1000);
+                }
+                if (waitpid(pid, &gst, WNOHANG) != pid)
+                    kill(pid, SIGKILL);                   /* 兵 */
+                break;
+            }
+        }
         /* v0.7.46 黑匣子：卡死期间每 2 秒抄子进程的 /proc/<pid>/syscall、wchan、status（SigPnd/SigBlk）。
          * SIGSYS 死亡发生在 512 条 TRAP 之后时，日志里什么都看不到，就靠它破。 */
         {

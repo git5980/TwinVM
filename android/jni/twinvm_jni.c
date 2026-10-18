@@ -1610,6 +1610,21 @@ static void* tvm_tracer_main(void* arg) {
     g_t_pid = pid;
     sem_post(&g_launch_sem);                 /* 通知主线程：fork 完成，pid 就绪 */
 
+    /* v1.2.66 ★★★ 真凶修复：tracer 线程自行 UNBLOCK SIGALRM。
+     * 信号掩码是 per-thread 的——本线程由主线程在 ALRM 屏蔽**之后**创建
+     * （pthread_create 继承创建时刻掩码），主线程后补的 UNBLOCK 只解它自己
+     * → tracer 永远屏蔽 ALRM → setitimer 到期全员屏蔽 → waitpid 永无
+     * EINTR → 永不进轮询态 → t-watch 停摆（v1.2.65 真机实锤：stress 后
+     * t-watch 一条不出，但停点驱动检查 62s 前正常）。 */
+    {
+        sigset_t am; sigemptyset(&am); sigaddset(&am, SIGALRM);
+        pthread_sigmask(SIG_UNBLOCK, &am, NULL);
+        static int ub_once = 0;
+        if (!ub_once) { ub_once = 1;
+            ptrace_log("[alrm] ✓ tracer 已解除 SIGALRM 屏蔽（轮询态通道就绪）");
+        }
+    }
+
     /* v1.1.6 ★★★ 疑似总根因修复：父进程引擎装配。
      * 唯一的 vm_machine_setup 原来跑在**子进程**（jni_guest_main:366）里——
      * fork 后父子地址空间独立，父进程（示踪线程）的 g_cpu 始终是零值：
@@ -1731,6 +1746,10 @@ static void* tvm_tracer_main(void* arg) {
                 if (t < 0 && errno == EINTR) {
                     idle_poll = 1;                /* 超时打断：进轮询态 */
                     t = 0;
+                    static int ei_log = 0;
+                    if (ei_log < 3) { ei_log++;
+                        ptrace_log("[alrm] EINTR 命中 → 进轮询态（第 %d 次）", ei_log);
+                    }
                 } else {
                     struct itimerval zv = {{0, 0}, {0, 0}};
                     setitimer(ITIMER_REAL, &zv, NULL);

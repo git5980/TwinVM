@@ -1,0 +1,11 @@
+# TwinVM 合成公共库清单（v1.2.40）——只列 ROM /system/lib64 真实存在的库
+# （ColorOS libnativeloader 缺此文件会 LOG_ASSERT 直接 abort，真机两轮实锤）
+ld-android.so
+libbinder_ndk.so
+libc.so
+libdl.so
+libdl_android.so
+liblog.so
+libm.so
+libnativehelper.so
+libvndksupport.so

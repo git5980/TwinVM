@@ -1,0 +1,13 @@
+# TwinVM 合成 linker 配置（classloader namespace 之外的默认搜索路径）
+dir.system = /system/bin/
+[system]
+additional.namespaces = system,sphal,vndk,rs,art,twrp
+namespace.system.isolated = false
+namespace.system.search.paths = /system/lib64:/odm/lib64:/vendor/lib64
+namespace.system.permitted.paths = /system/lib64:/odm/lib64:/vendor/lib64:/rom
+namespace.system.links = art
+namespace.art.search.paths = /system/lib64
+namespace.sphal.isolated = true
+namespace.sphal.search.paths = /odm/lib64:/vendor/lib64
+namespace.vndk.isolated = true
+namespace.vndk.search.paths = /odm/lib64:/vendor/lib64

@@ -1,0 +1,26 @@
+# 构建产物
+android/build/
+android/*.keystore
+android/TwinVM-*.apk
+# 大二进制（ROM 由 fixture 重建；历史版本走 release）
+android/assets/*.rom
+core/build/
+core/demo.rom
+core/build_guest1
+# 交付物与历史（本地档案）
+交付/
+历史/
+日志/
+# IDE/临时
+*.swp
+.DS_Store
+# APK 成品（走 release，不入 git）
+android/TwinVM-*.apk
+# 历史快照 ROM（v0.7.55 修复版备份）
+rom/demo-*.rom
+# fixture 大库（按 README 重建）
+rom/fixture/android_root/apex/com.android.art/lib64/
+rom/fixture/android_root/apex/com.android.i18n/
+rom/fixture/android_root/apex/com.android.tzdata/
+rom/fixture/android_root.stale-bak/
+rom/fixture/android/

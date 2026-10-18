@@ -1,0 +1,595 @@
+[TwinVM] [policy] 审计放行清单（35 条）：逐条 fork 子进程实测
+[TwinVM] [policy]    exit_group(94) -> 安全
+[TwinVM] [policy]    rt_sigreturn(139) -> 本身报信号 11（非 KILL）
+[TwinVM] [policy]    exit(93) -> 安全
+[TwinVM] [policy]    gettid(178) -> 安全
+[TwinVM] [policy]    getpid(172) -> 安全
+[TwinVM] [policy]    getppid(173) -> 安全
+[TwinVM] [policy]    brk(214) -> 安全
+[TwinVM] [policy]    munmap(215) -> 安全
+[TwinVM] [policy]    mprotect(226) -> 安全
+[TwinVM] [policy]    mremap(216) -> 安全
+[TwinVM] [policy]    madvise(233) -> 安全
+[TwinVM] [policy]    futex(98) -> 安全
+[TwinVM] [policy]    set_tid_address(96) -> 安全
+[TwinVM] [policy]    rt_sigprocmask(135) -> 安全
+[TwinVM] [policy]    sigaltstack(132) -> 安全
+[TwinVM] [policy]    kill(129) -> 安全
+[TwinVM] [policy]    tgkill(131) -> 安全
+[TwinVM] [policy]    wait4(260) -> 安全
+[TwinVM] [policy]    clone(220) -> 安全
+[TwinVM] [policy]    clock_gettime(113) -> 安全
+[TwinVM] [policy]    getrandom(278) -> 安全
+[TwinVM] [policy]    sched_yield(124) -> 安全
+[TwinVM] [policy]    sched_getaffinity(123) -> 安全
+[TwinVM] [policy]    membarrier(283) -> 安全
+[TwinVM] [policy]    prlimit64(261) -> 安全
+[TwinVM] [policy]    gettimeofday(169) -> 安全
+[TwinVM] [policy]    nanosleep(101) -> 安全
+[TwinVM] [policy]    clock_nanosleep(115) -> 安全
+[TwinVM] [policy]    userfaultfd(282) -> 安全
+[TwinVM] [policy]    epoll_create1(20) -> 安全
+[TwinVM] [policy]    epoll_ctl(21) -> 安全
+[TwinVM] [policy]    epoll_pwait(22) -> 安全
+[TwinVM] [policy]    pipe2(59) -> 安全
+[TwinVM] [policy]    getcpu(168) -> 安全
+[TwinVM] [policy]    sched_setaffinity(122) -> 安全
+[TwinVM] [policy] (参数化) write(64) -> 信号 0
+[TwinVM] [policy] (参数化) writev(66) -> 信号 0
+[TwinVM] [policy] (参数化) read(63) -> 信号 0
+[TwinVM] [policy] (参数化) close(57) -> 信号 0
+[TwinVM] [policy] (参数化) ioctl(29) -> 信号 0
+[TwinVM] [policy] (参数化) socket(198) -> 信号 0
+[TwinVM] [policy] (参数化) connect(203) -> 信号 0
+[TwinVM] [policy] (参数化) pread64(67) -> 信号 0
+[TwinVM] [policy] (参数化) mmap(222) -> 信号 0
+[TwinVM] [policy] (参数化) rt_sigaction(134) -> 信号 0
+[TwinVM] [policy] (参数化) fstat(80) -> 信号 0
+[TwinVM] [policy] (参数化) openat(56) -> 信号 0
+[TwinVM] [policy] (已知) rseq(293) -> 信号 31
+[TwinVM] [policy] (已知) mbind(235) -> 信号 31
+[TwinVM] [policy] (已知) get_mempolicy(236) -> 信号 31
+[TwinVM] [policy] (已知) set_mempolicy(237) -> 信号 31
+[TwinVM] [policy] (已知) migrate_pages(238) -> 信号 31
+[TwinVM] [policy] (已知) move_pages(239) -> 信号 31
+[TwinVM] [policy] (已知) keyctl(250) -> 信号 31
+[TwinVM] [policy] (已知) add_key(248) -> 信号 31
+[TwinVM] [policy] (已知) request_key(249) -> 信号 31
+[TwinVM] [policy] (已知) openat2(437) -> 信号 31
+[TwinVM] [policy] (已知) faccessat2(439) -> 信号 31
+[TwinVM] [policy] 放行清单里有 0 条会被 App 策略 KILL
+[TwinVM] [sweep] v0.7.59 全量 syscall 扫雷（0..500，仅 App 策略，参数 0,0,0）...
+[TwinVM] [sweep] 注意: 参数全 0 —— 策略里带参数条件的规则可能过报（真凶以 [trace] 为准）
+[TwinVM] [sweep] 时间预算用尽，只扫到 nr=321
+[TwinVM] [sweep] App 策略 KILL 名单（死于 31）共 112 个：
+[TwinVM] [sweep]  18 39 40 42 51 58 89 99 100 104 105 106 112 116 142 143 144 145 146 149 151 152 159 161 162 170 171 180 181 182 183 184 185 186 187 188 189 190 191 192 193 194 195 196 197 202 217 218 219 224 225 234 235 236 237 238 239 244 245 246 247 248 249 250 251 252 253 254 255 256 257 258 259 262 263 264 265 266 272 273 288 289 290 292 293 294 295 296 297 298 299 300 301 302 303 304 305 306 307 308 309 310 311 312 313 314 315 316 317 318 319 320 
+[TwinVM] [sweep]  （另：挂 0 个、其它信号死 1 个=参数无效，非策略）
+[TwinVM] ▶ [2/6] 正在安装拦截器（最多等 1.2 秒）…
+[TwinVM] ▶ ✗ **seccomp(2) 被永久挂起**（1.2 秒无返回）：外层策略把它当成了需要外部应答的操作。改用 SIGSYS/TRAP 后端继续。
+[TwinVM] [trace] 握手: 停点信号=5 setoptions=0 重启=0 (pid=27230, 由示踪线程 fork)
+[TwinVM] [ptrace] GSI: r=80 op=1 arch=3221225655 nr=64（t=27230）
+[TwinVM] [trace] #1      t27230  nr=64   a0=0x8b a1=0x723c4eaf20 a2=0x50
+[TwinVM] ▶ 槽位启动：清理继承的宿主 fd（保留 console=139）…
+[TwinVM] [ptrace] GSI: r=33 op=2 arch=3221225655 nr=-1（t=27230）
+[TwinVM] [ptrace] 回填 #1：nr=64 → x0=80（tid=27230）
+[TwinVM] [ptrace] GSI: r=80 op=1 arch=3221225655 nr=57（t=27230）
+[TwinVM] [trace] #2      t27230  nr=57   a0=0x40 a1=0x40 a2=0x72d4afb2f3
+[TwinVM] [ptrace] GSI: r=33 op=2 arch=3221225655 nr=-1（t=27230）
+[TwinVM] [ptrace] GSI: r=80 op=1 arch=3221225655 nr=57（t=27230）
+[TwinVM] [trace] #3      t27230  nr=57   a0=0x41 a1=0x41 a2=0x72d4afb2f3
+[TwinVM] [ptrace] GSI: r=33 op=2 arch=3221225655 nr=-1（t=27230）
+[TwinVM] [ptrace] GSI: r=80 op=1 arch=3221225655 nr=57（t=27230）
+[TwinVM] [trace] #4      t27230  nr=57   a0=0x42 a1=0x42 a2=0x72d4afb2f3
+[TwinVM] [ptrace] GSI: r=33 op=2 arch=3221225655 nr=-1（t=27230）
+[TwinVM] [ptrace] GSI: r=80 op=1 arch=3221225655 nr=57（t=27230）
+[TwinVM] [trace] #5      t27230  nr=57   a0=0x43 a1=0x43 a2=0x72d4afb2f3
+[TwinVM] [ptrace] GSI: r=33 op=2 arch=3221225655 nr=-1（t=27230）
+[TwinVM] [ptrace] GSI: r=80 op=1 arch=3221225655 nr=57（t=27230）
+[TwinVM] [trace] #6      t27230  nr=57   a0=0x44 a1=0x44 a2=0x72d4afb2f3
+[TwinVM] [ptrace] GSI: r=33 op=2 arch=3221225655 nr=-1（t=27230）
+[TwinVM] [ptrace] GSI: r=80 op=1 arch=3221225655 nr=57（t=27230）
+[TwinVM] [trace] #7      t27230  nr=57   a0=0x45 a1=0x45 a2=0x72d4afb2f3
+[TwinVM] [ptrace] GSI: r=33 op=2 arch=3221225655 nr=-1（t=27230）
+[TwinVM] [ptrace] GSI: r=80 op=1 arch=3221225655 nr=57（t=27230）
+[TwinVM] [trace] #8      t27230  nr=57   a0=0x46 a1=0x46 a2=0x72d4afb2f3
+[TwinVM] [ptrace] GSI: r=33 op=2 arch=3221225655 nr=-1（t=27230）
+[TwinVM] [ptrace] GSI: r=80 op=1 arch=3221225655 nr=57（t=27230）
+[TwinVM] [trace] #9      t27230  nr=57   a0=0x47 a1=0x47 a2=0x72d4afb2f3
+[TwinVM] [ptrace] GSI: r=33 op=2 arch=3221225655 nr=-1（t=27230）
+[TwinVM] [ptrace] GSI: r=80 op=1 arch=3221225655 nr=57（t=27230）
+[TwinVM] [trace] #10     t27230  nr=57   a0=0x48 a1=0x48 a2=0x72d4afb2f3
+[TwinVM] [ptrace] GSI: r=33 op=2 arch=3221225655 nr=-1（t=27230）
+[TwinVM] [trace] #11     t27230  nr=57   a0=0x49 a1=0x49 a2=0x72d4afb2f3
+[TwinVM] [trace] #12     t27230  nr=57   a0=0x4a a1=0x4a a2=0x72d4afb2f3
+[TwinVM] [trace] #13     t27230  nr=57   a0=0x4b a1=0x4b a2=0x72d4afb2f3
+[TwinVM] [trace] #14     t27230  nr=57   a0=0x4c a1=0x4c a2=0x72d4afb2f3
+[TwinVM] [trace] #15     t27230  nr=57   a0=0x4d a1=0x0 a2=0x730a23c768
+[TwinVM] [trace] #16     t27230  nr=57   a0=0x4e a1=0x0 a2=0x730a23c770
+[TwinVM] [trace] #17     t27230  nr=57   a0=0x4f a1=0x0 a2=0x730a23c778
+[TwinVM] [trace] #18     t27230  nr=57   a0=0x50 a1=0x0 a2=0x730a23c780
+[TwinVM] [trace] #19     t27230  nr=57   a0=0x51 a1=0x0 a2=0x730a23c788
+[TwinVM] [trace] #20     t27230  nr=57   a0=0x52 a1=0x0 a2=0x730a23c790
+[TwinVM] [trace] #21     t27230  nr=57   a0=0x53 a1=0x0 a2=0x730a23c798
+[TwinVM] [trace] #22     t27230  nr=57   a0=0x54 a1=0x54 a2=0x72d4afc5e4
+[TwinVM] [trace] #23     t27230  nr=57   a0=0x55 a1=0x55 a2=0x72d4afc5e4
+[TwinVM] [trace] #24     t27230  nr=57   a0=0x56 a1=0x0 a2=0x730a23c7b0
+[TwinVM] [trace] #25     t27230  nr=57   a0=0x57 a1=0x57 a2=0x72d4afb2f3
+[TwinVM] [trace] #26     t27230  nr=57   a0=0x58 a1=0x0 a2=0x730a23c7c0
+[TwinVM] [trace] #27     t27230  nr=57   a0=0x59 a1=0x59 a2=0x72d4afc5e4
+[TwinVM] [trace] #28     t27230  nr=57   a0=0x5a a1=0x5a a2=0x72d4afc5e4
+[TwinVM] [trace] #29     t27230  nr=57   a0=0x5b a1=0x5b a2=0x72d4afb2f3
+[TwinVM] [trace] #30     t27230  nr=57   a0=0x5c a1=0x5c a2=0x72d4afc5e4
+[TwinVM] [trace] #31     t27230  nr=57   a0=0x5d a1=0x5d a2=0x72d4afc5e4
+[TwinVM] [trace] #32     t27230  nr=57   a0=0x5e a1=0x5e a2=0x72d4afc5e4
+[TwinVM] [trace] #33     t27230  nr=57   a0=0x5f a1=0x5f a2=0x72d4afc5e4
+[TwinVM] [trace] #34     t27230  nr=57   a0=0x60 a1=0x60 a2=0x72d4afc5e4
+[TwinVM] [trace] #35     t27230  nr=57   a0=0x61 a1=0x61 a2=0x72d4afc5e4
+[TwinVM] [trace] #36     t27230  nr=57   a0=0x62 a1=0x62 a2=0x72d4afc5e4
+[TwinVM] [trace] #37     t27230  nr=57   a0=0x63 a1=0x0 a2=0x730a23c818
+[TwinVM] [trace] #38     t27230  nr=57   a0=0x64 a1=0x0 a2=0x730a23c820
+[TwinVM] [trace] #39     t27230  nr=57   a0=0x65 a1=0x0 a2=0x730a23c828
+[TwinVM] [trace] #40     t27230  nr=57   a0=0x66 a1=0x0 a2=0x730a23c830
+[TwinVM] [trace] #41     t27230  nr=57   a0=0x67 a1=0x0 a2=0x730a23c838
+[TwinVM] [trace] #42     t27230  nr=57   a0=0x68 a1=0x68 a2=0x72d4afc5e4
+[TwinVM] [trace] #43     t27230  nr=57   a0=0x69 a1=0x69 a2=0x72d4afc5e4
+[TwinVM] [trace] #44     t27230  nr=57   a0=0x6a a1=0x0 a2=0x730a23c850
+[TwinVM] [trace] #45     t27230  nr=57   a0=0x6b a1=0x0 a2=0x730a23c858
+[TwinVM] [trace] #46     t27230  nr=57   a0=0x6c a1=0x0 a2=0x730a23c860
+[TwinVM] [trace] #47     t27230  nr=57   a0=0x6d a1=0x0 a2=0x730a23c868
+[TwinVM] [trace] #48     t27230  nr=57   a0=0x6e a1=0x0 a2=0x730a23c870
+[TwinVM] [trace] #49     t27230  nr=57   a0=0x6f a1=0x0 a2=0x730a23c878
+[TwinVM] [trace] #50     t27230  nr=57   a0=0x70 a1=0x70 a2=0x72d4afc5e4
+[TwinVM] [trace] #51     t27230  nr=57   a0=0x71 a1=0x0 a2=0x730a23c888
+[TwinVM] [trace] #52     t27230  nr=57   a0=0x72 a1=0x72 a2=0x72d4afc5e4
+[TwinVM] [trace] #53     t27230  nr=57   a0=0x73 a1=0x73 a2=0x72d4afc5e4
+[TwinVM] [trace] #54     t27230  nr=57   a0=0x74 a1=0x0 a2=0x730a23c8a0
+[TwinVM] [trace] #55     t27230  nr=57   a0=0x75 a1=0x0 a2=0x730a23c8a8
+[TwinVM] [trace] #56     t27230  nr=57   a0=0x76 a1=0x0 a2=0x730a23c8b0
+[TwinVM] [trace] #57     t27230  nr=57   a0=0x77 a1=0x0 a2=0x730a23c8b8
+[TwinVM] [trace] #58     t27230  nr=57   a0=0x78 a1=0x0 a2=0x730a23c8c0
+[TwinVM] [trace] #59     t27230  nr=57   a0=0x79 a1=0x0 a2=0x730a23c8c8
+[TwinVM] [trace] #60     t27230  nr=57   a0=0x7a a1=0x0 a2=0x730a23c8d0
+[TwinVM] [trace] #61     t27230  nr=57   a0=0x7b a1=0x0 a2=0x730a23c8d8
+[TwinVM] [trace] #62     t27230  nr=57   a0=0x7c a1=0x0 a2=0x730a23c8e0
+[TwinVM] [trace] #63     t27230  nr=57   a0=0x7d a1=0x0 a2=0x730a23c8e8
+[TwinVM] [trace] #64     t27230  nr=57   a0=0x7e a1=0x0 a2=0x730a23c8f0
+[TwinVM] [trace] #65     t27230  nr=57   a0=0x7f a1=0x0 a2=0x730a23c8f8
+[TwinVM] [trace] #66     t27230  nr=57   a0=0x80 a1=0x0 a2=0x73081ee008
+[TwinVM] [trace] #67     t27230  nr=57   a0=0x81 a1=0x0 a2=0x73081ee010
+[TwinVM] [trace] #68     t27230  nr=57   a0=0x82 a1=0x0 a2=0x73081ee018
+[TwinVM] [trace] #69     t27230  nr=57   a0=0x83 a1=0x0 a2=0x73081ee020
+[TwinVM] [trace] #70     t27230  nr=57   a0=0x84 a1=0x0 a2=0x73081ee028
+[TwinVM] [trace] #71     t27230  nr=57   a0=0x85 a1=0x0 a2=0x73081ee030
+[TwinVM] [trace] #72     t27230  nr=57   a0=0x86 a1=0x0 a2=0x73081ee038
+[TwinVM] [trace] #73     t27230  nr=57   a0=0x87 a1=0x87 a2=0x72d4afc5e4
+[TwinVM] [trace] #74     t27230  nr=57   a0=0x88 a1=0x88 a2=0x72d4afc5e4
+[TwinVM] [trace] #75     t27230  nr=57   a0=0x89 a1=0x0 a2=0x73081ee050
+[TwinVM] [trace] #76     t27230  nr=57   a0=0x8a a1=0x0 a2=0x73081ee058
+[TwinVM] [trace] #77     t27230  nr=57   a0=0x8c a1=0x0 a2=0x73081ee068
+[TwinVM] [trace] #78     t27230  nr=57   a0=0x8d a1=0x8d a2=0x72d4afc5e4
+[TwinVM] [trace] #79     t27230  nr=57   a0=0x8e a1=0x0 a2=0x73081ee078
+[TwinVM] [trace] #80     t27230  nr=57   a0=0x8f a1=0x0 a2=0x73081ee080
+[TwinVM] [trace] #81     t27230  nr=57   a0=0x90 a1=0x90 a2=0x72d4afc5e4
+[TwinVM] [trace] #82     t27230  nr=57   a0=0x91 a1=0x0 a2=0x73081ee090
+[TwinVM] [trace] #83     t27230  nr=57   a0=0x92 a1=0x92 a2=0x72d4afc5e4
+[TwinVM] [trace] #84     t27230  nr=57   a0=0x93 a1=0x93 a2=0x72d4afc5e4
+[TwinVM] [trace] #85     t27230  nr=57   a0=0x94 a1=0x0 a2=0x73081ee0a8
+[TwinVM] [trace] #86     t27230  nr=57   a0=0x96 a1=0x96 a2=0x72d4afc5e4
+[TwinVM] [trace] #87     t27230  nr=57   a0=0x97 a1=0x97 a2=0x72d4afc5e4
+[TwinVM] [trace] #88     t27230  nr=57   a0=0x98 a1=0x98 a2=0x72d4afc5e4
+[TwinVM] [trace] #89     t27230  nr=57   a0=0x99 a1=0x99 a2=0x72d4afc5e4
+[TwinVM] [trace] #90     t27230  nr=57   a0=0x9a a1=0x9a a2=0x72d4afc5e4
+[TwinVM] [trace] #91     t27230  nr=57   a0=0x9b a1=0x9b a2=0x72d4afc5e4
+[TwinVM] [trace] #92     t27230  nr=57   a0=0x9c a1=0x9c a2=0x72d4afc5e4
+[TwinVM] [trace] #93     t27230  nr=57   a0=0x9d a1=0x9d a2=0x72d4afc5e4
+[TwinVM] [trace] #94     t27230  nr=57   a0=0x9e a1=0x9e a2=0x72d4afc5e4
+[TwinVM] [trace] #95     t27230  nr=57   a0=0x9f a1=0x9f a2=0x72d4afc5e4
+[TwinVM] [trace] #96     t27230  nr=57   a0=0xa0 a1=0xa0 a2=0x72d4afc5e4
+[TwinVM] [trace] #97     t27230  nr=57   a0=0xa1 a1=0xa1 a2=0x72d4afc5e4
+[TwinVM] [trace] #98     t27230  nr=57   a0=0xa2 a1=0xa2 a2=0x72d4afc5e4
+[TwinVM] [trace] #99     t27230  nr=57   a0=0xa3 a1=0xa3 a2=0x72d4afc5e4
+[TwinVM] [trace] #100    t27230  nr=57   a0=0xa4 a1=0xa4 a2=0x72d4afc5e4
+[TwinVM] [trace] #101    t27230  nr=57   a0=0xa5 a1=0xa5 a2=0x72d4afc5e4
+[TwinVM] [trace] #102    t27230  nr=57   a0=0xa6 a1=0xa6 a2=0x72d4afc5e4
+[TwinVM] [trace] #103    t27230  nr=57   a0=0xa7 a1=0xa7 a2=0x72d4afc5e4
+[TwinVM] [trace] #104    t27230  nr=57   a0=0xa8 a1=0xa8 a2=0x72d4afc5e4
+[TwinVM] [trace] #105    t27230  nr=57   a0=0xa9 a1=0xa9 a2=0x72d4afc5e4
+[TwinVM] [trace] #106    t27230  nr=57   a0=0xaa a1=0xaa a2=0x72d4afc5e4
+[TwinVM] [trace] #107    t27230  nr=57   a0=0xab a1=0xab a2=0x72d4afc5e4
+[TwinVM] [trace] #108    t27230  nr=57   a0=0xac a1=0xac a2=0x72d4afc5e4
+[TwinVM] [trace] #109    t27230  nr=57   a0=0xad a1=0xad a2=0x72d4afc5e4
+[TwinVM] [trace] #110    t27230  nr=57   a0=0xae a1=0x0 a2=0x73081ee178
+[TwinVM] [trace] #111    t27230  nr=57   a0=0xaf a1=0x0 a2=0x73081ee180
+[TwinVM] [trace] #112    t27230  nr=57   a0=0xb0 a1=0x0 a2=0x73081ee188
+[TwinVM] [trace] #113    t27230  nr=57   a0=0xb1 a1=0x0 a2=0x73081ee190
+[TwinVM] [trace] #114    t27230  nr=57   a0=0xb2 a1=0x0 a2=0x73081ee198
+[TwinVM] [trace] #115    t27230  nr=57   a0=0xb3 a1=0x0 a2=0x73081ee1a0
+[TwinVM] [trace] #116    t27230  nr=57   a0=0xb4 a1=0x0 a2=0x73081ee1a8
+[TwinVM] [trace] #117    t27230  nr=57   a0=0xb5 a1=0x0 a2=0x73081ee1b0
+[TwinVM] [trace] #118    t27230  nr=57   a0=0xb6 a1=0x0 a2=0x73081ee1b8
+[TwinVM] [trace] #119    t27230  nr=57   a0=0xb7 a1=0x0 a2=0x73081ee1c0
+[TwinVM] [trace] #120    t27230  nr=57   a0=0xb8 a1=0x0 a2=0x73081ee1c8
+[TwinVM] [trace] #121    t27230  nr=57   a0=0xb9 a1=0x0 a2=0x73081ee1d0
+[TwinVM] [trace] #122    t27230  nr=57   a0=0xba a1=0x0 a2=0x73081ee1d8
+[TwinVM] [trace] #123    t27230  nr=57   a0=0xbb a1=0x0 a2=0x73081ee1e0
+[TwinVM] [trace] #124    t27230  nr=57   a0=0xbc a1=0x0 a2=0x73081ee1e8
+[TwinVM] [trace] #125    t27230  nr=57   a0=0xbd a1=0x0 a2=0x73081ee1f0
+[TwinVM] [trace] #126    t27230  nr=57   a0=0xbe a1=0x0 a2=0x73081ee1f8
+[TwinVM] [trace] #127    t27230  nr=57   a0=0xbf a1=0x0 a2=0x73081ee200
+[TwinVM] [trace] #128    t27230  nr=57   a0=0xc0 a1=0x0 a2=0x73081ee208
+[TwinVM] [trace] #129    t27230  nr=57   a0=0xc1 a1=0x0 a2=0x73081ee210
+[TwinVM] [trace] #130    t27230  nr=57   a0=0xc2 a1=0x0 a2=0x73081ee218
+[TwinVM] [trace] #131    t27230  nr=57   a0=0xc3 a1=0x0 a2=0x73081ee220
+[TwinVM] [trace] #132    t27230  nr=57   a0=0xc4 a1=0x0 a2=0x73081ee228
+[TwinVM] [trace] #133    t27230  nr=57   a0=0xc5 a1=0x0 a2=0x73081ee230
+[TwinVM] [trace] #134    t27230  nr=57   a0=0xc6 a1=0x0 a2=0x73081ee238
+[TwinVM] [trace] #135    t27230  nr=57   a0=0xc7 a1=0x0 a2=0x73081ee240
+[TwinVM] [trace] #136    t27230  nr=57   a0=0xc8 a1=0x0 a2=0x73081ee248
+[TwinVM] [trace] #137    t27230  nr=57   a0=0xc9 a1=0x0 a2=0x73081ee250
+[TwinVM] [trace] #138    t27230  nr=57   a0=0xca a1=0x0 a2=0x73081ee258
+[TwinVM] [trace] #139    t27230  nr=57   a0=0xcb a1=0x0 a2=0x73081ee260
+[TwinVM] [trace] #140    t27230  nr=57   a0=0xcc a1=0x0 a2=0x73081ee268
+[TwinVM] [trace] #141    t27230  nr=57   a0=0xcd a1=0x0 a2=0x73081ee270
+[TwinVM] [trace] #142    t27230  nr=57   a0=0xce a1=0x0 a2=0x73081ee278
+[TwinVM] [trace] #143    t27230  nr=57   a0=0xcf a1=0x0 a2=0x73081ee280
+[TwinVM] [trace] #144    t27230  nr=57   a0=0xd0 a1=0x0 a2=0x73081ee288
+[TwinVM] [trace] #145    t27230  nr=57   a0=0xd1 a1=0x0 a2=0x73081ee290
+[TwinVM] [trace] #146    t27230  nr=57   a0=0xd2 a1=0x0 a2=0x73081ee298
+[TwinVM] [trace] #147    t27230  nr=57   a0=0xd3 a1=0x0 a2=0x73081ee2a0
+[TwinVM] [trace] #148    t27230  nr=57   a0=0xd4 a1=0x0 a2=0x73081ee2a8
+[TwinVM] [trace] #149    t27230  nr=57   a0=0xd5 a1=0x0 a2=0x73081ee2b0
+[TwinVM] [trace] #150    t27230  nr=57   a0=0xd6 a1=0x0 a2=0x73081ee2b8
+[TwinVM] [trace] #151    t27230  nr=57   a0=0xd7 a1=0x0 a2=0x73081ee2c0
+[TwinVM] [trace] #152    t27230  nr=57   a0=0xd8 a1=0x0 a2=0x73081ee2c8
+[TwinVM] [trace] #153    t27230  nr=57   a0=0xd9 a1=0x0 a2=0x73081ee2d0
+[TwinVM] [trace] #154    t27230  nr=57   a0=0xda a1=0x0 a2=0x73081ee2d8
+[TwinVM] [trace] #155    t27230  nr=57   a0=0xdb a1=0x0 a2=0x73081ee2e0
+[TwinVM] [trace] #156    t27230  nr=57   a0=0xdc a1=0x0 a2=0x73081ee2e8
+[TwinVM] [trace] #157    t27230  nr=57   a0=0xdd a1=0x0 a2=0x73081ee2f0
+[TwinVM] [trace] #158    t27230  nr=57   a0=0xde a1=0x0 a2=0x73081ee2f8
+[TwinVM] [trace] #159    t27230  nr=57   a0=0xdf a1=0x0 a2=0x73081ee300
+[TwinVM] [trace] #160    t27230  nr=57   a0=0xe0 a1=0x0 a2=0x73081ee308
+[TwinVM] [trace] #161    t27230  nr=57   a0=0xe1 a1=0x0 a2=0x73081ee310
+[TwinVM] [trace] #162    t27230  nr=57   a0=0xe2 a1=0x0 a2=0x73081ee318
+[TwinVM] [trace] #163    t27230  nr=57   a0=0xe3 a1=0x0 a2=0x73081ee320
+[TwinVM] [trace] #164    t27230  nr=57   a0=0xe4 a1=0x0 a2=0x73081ee328
+[TwinVM] [trace] #165    t27230  nr=57   a0=0xe5 a1=0x0 a2=0x73081ee330
+[TwinVM] [trace] #166    t27230  nr=57   a0=0xe6 a1=0x0 a2=0x73081ee338
+[TwinVM] [trace] #167    t27230  nr=57   a0=0xe7 a1=0x0 a2=0x73081ee340
+[TwinVM] [trace] #168    t27230  nr=57   a0=0xe8 a1=0x0 a2=0x73081ee348
+[TwinVM] [trace] #169    t27230  nr=57   a0=0xe9 a1=0x0 a2=0x73081ee350
+[TwinVM] [trace] #170    t27230  nr=57   a0=0xea a1=0x0 a2=0x73081ee358
+[TwinVM] [trace] #171    t27230  nr=57   a0=0xeb a1=0x0 a2=0x73081ee360
+[TwinVM] [trace] #172    t27230  nr=57   a0=0xec a1=0x0 a2=0x73081ee368
+[TwinVM] [trace] #173    t27230  nr=57   a0=0xed a1=0x0 a2=0x73081ee370
+[TwinVM] [trace] #174    t27230  nr=57   a0=0xee a1=0x0 a2=0x73081ee378
+[TwinVM] [trace] #175    t27230  nr=57   a0=0xef a1=0x0 a2=0x73081ee380
+[TwinVM] [trace] #176    t27230  nr=57   a0=0xf0 a1=0x0 a2=0x73081ee388
+[TwinVM] [trace] #177    t27230  nr=57   a0=0xf1 a1=0x0 a2=0x73081ee390
+[TwinVM] [trace] #178    t27230  nr=57   a0=0xf2 a1=0x0 a2=0x73081ee398
+[TwinVM] [trace] #179    t27230  nr=57   a0=0xf3 a1=0x0 a2=0x73081ee3a0
+[TwinVM] [trace] #180    t27230  nr=57   a0=0xf4 a1=0x0 a2=0x73081ee3a8
+[TwinVM] [trace] #181    t27230  nr=57   a0=0xf5 a1=0x0 a2=0x73081ee3b0
+[TwinVM] [trace] #182    t27230  nr=57   a0=0xf6 a1=0x0 a2=0x73081ee3b8
+[TwinVM] [trace] #183    t27230  nr=57   a0=0xf7 a1=0x0 a2=0x73081ee3c0
+[TwinVM] [trace] #184    t27230  nr=57   a0=0xf8 a1=0x0 a2=0x73081ee3c8
+[TwinVM] [trace] #185    t27230  nr=57   a0=0xf9 a1=0x0 a2=0x73081ee3d0
+[TwinVM] [trace] #186    t27230  nr=57   a0=0xfa a1=0x0 a2=0x73081ee3d8
+[TwinVM] [trace] #187    t27230  nr=57   a0=0xfb a1=0x0 a2=0x73081ee3e0
+[TwinVM] [trace] #188    t27230  nr=57   a0=0xfc a1=0x0 a2=0x73081ee3e8
+[TwinVM] [trace] #189    t27230  nr=57   a0=0xfd a1=0x0 a2=0x73081ee3f0
+[TwinVM] [trace] #190    t27230  nr=57   a0=0xfe a1=0x0 a2=0x73081ee3f8
+[TwinVM] [trace] #191    t27230  nr=57   a0=0xff a1=0x0 a2=0x73081ee400
+[TwinVM] [trace] #192    t27230  nr=57   a0=0x100 a1=0x0 a2=0x73081ee408
+[TwinVM] [trace] #193    t27230  nr=57   a0=0x101 a1=0x0 a2=0x73081ee410
+[TwinVM] [trace] #194    t27230  nr=57   a0=0x102 a1=0x0 a2=0x73081ee418
+[TwinVM] [trace] #195    t27230  nr=57   a0=0x103 a1=0x0 a2=0x73081ee420
+[TwinVM] [trace] #196    t27230  nr=57   a0=0x104 a1=0x0 a2=0x73081ee428
+[TwinVM] [trace] #197    t27230  nr=57   a0=0x105 a1=0x0 a2=0x73081ee430
+[TwinVM] [trace] #198    t27230  nr=57   a0=0x106 a1=0x0 a2=0x73081ee438
+[TwinVM] [trace] #199    t27230  nr=57   a0=0x107 a1=0x0 a2=0x73081ee440
+[TwinVM] [trace] #200    t27230  nr=57   a0=0x108 a1=0x0 a2=0x73081ee448
+[TwinVM] [trace] #201    t27230  nr=57   a0=0x109 a1=0x0 a2=0x73081ee450
+[TwinVM] [ptrace] 回填 #201：nr=57 → x0=0（tid=27230）
+[TwinVM] [trace] #202    t27230  nr=57   a0=0x10a a1=0x0 a2=0x73081ee458
+[TwinVM] [trace] #203    t27230  nr=57   a0=0x10b a1=0x0 a2=0x73081ee460
+[TwinVM] [trace] #204    t27230  nr=57   a0=0x10c a1=0x0 a2=0x73081ee468
+[TwinVM] [trace] #205    t27230  nr=57   a0=0x10d a1=0x0 a2=0x73081ee470
+[TwinVM] [trace] #206    t27230  nr=57   a0=0x10e a1=0x0 a2=0x73081ee478
+[TwinVM] [trace] #207    t27230  nr=57   a0=0x10f a1=0x0 a2=0x73081ee480
+[TwinVM] [trace] #208    t27230  nr=57   a0=0x110 a1=0x0 a2=0x73081ee488
+[TwinVM] [trace] #209    t27230  nr=57   a0=0x111 a1=0x0 a2=0x73081ee490
+[TwinVM] [trace] #210    t27230  nr=57   a0=0x112 a1=0x0 a2=0x73081ee498
+[TwinVM] [trace] #211    t27230  nr=57   a0=0x113 a1=0x0 a2=0x73081ee4a0
+[TwinVM] [trace] #212    t27230  nr=57   a0=0x114 a1=0x0 a2=0x73081ee4a8
+[TwinVM] [trace] #213    t27230  nr=57   a0=0x115 a1=0x0 a2=0x73081ee4b0
+[TwinVM] [trace] #214    t27230  nr=57   a0=0x116 a1=0x0 a2=0x73081ee4b8
+[TwinVM] [trace] #215    t27230  nr=57   a0=0x117 a1=0x0 a2=0x73081ee4c0
+[TwinVM] [trace] #216    t27230  nr=57   a0=0x118 a1=0x0 a2=0x73081ee4c8
+[TwinVM] [trace] #217    t27230  nr=57   a0=0x119 a1=0x0 a2=0x73081ee4d0
+[TwinVM] [trace] #218    t27230  nr=57   a0=0x11a a1=0x0 a2=0x73081ee4d8
+[TwinVM] [trace] #219    t27230  nr=57   a0=0x11b a1=0x0 a2=0x73081ee4e0
+[TwinVM] [trace] #220    t27230  nr=57   a0=0x11c a1=0x0 a2=0x73081ee4e8
+[TwinVM] [trace] #221    t27230  nr=57   a0=0x11d a1=0x0 a2=0x73081ee4f0
+[TwinVM] [trace] #222    t27230  nr=57   a0=0x11e a1=0x0 a2=0x73081ee4f8
+[TwinVM] [trace] #223    t27230  nr=57   a0=0x11f a1=0x0 a2=0x73081ee500
+[TwinVM] [trace] #224    t27230  nr=57   a0=0x120 a1=0x0 a2=0x73081ee508
+[TwinVM] [trace] #225    t27230  nr=57   a0=0x121 a1=0x0 a2=0x73081ee510
+[TwinVM] [trace] #226    t27230  nr=57   a0=0x122 a1=0x0 a2=0x73081ee518
+[TwinVM] [trace] #227    t27230  nr=57   a0=0x123 a1=0x0 a2=0x73081ee520
+[TwinVM] [trace] #228    t27230  nr=57   a0=0x124 a1=0x0 a2=0x73081ee528
+[TwinVM] [trace] #229    t27230  nr=57   a0=0x125 a1=0x0 a2=0x73081ee530
+[TwinVM] [trace] #230    t27230  nr=57   a0=0x126 a1=0x0 a2=0x73081ee538
+[TwinVM] [trace] #231    t27230  nr=57   a0=0x127 a1=0x0 a2=0x73081ee540
+[TwinVM] [trace] #232    t27230  nr=57   a0=0x128 a1=0x0 a2=0x73081ee548
+[TwinVM] [trace] #233    t27230  nr=57   a0=0x129 a1=0x0 a2=0x73081ee550
+[TwinVM] [trace] #234    t27230  nr=57   a0=0x12a a1=0x0 a2=0x73081ee558
+[TwinVM] [trace] #235    t27230  nr=57   a0=0x12b a1=0x0 a2=0x73081ee560
+[TwinVM] [trace] #236    t27230  nr=57   a0=0x12c a1=0x0 a2=0x73081ee568
+[TwinVM] [trace] #237    t27230  nr=57   a0=0x12d a1=0x0 a2=0x73081ee570
+[TwinVM] [trace] #238    t27230  nr=57   a0=0x12e a1=0x0 a2=0x73081ee578
+[TwinVM] [trace] #239    t27230  nr=57   a0=0x12f a1=0x0 a2=0x73081ee580
+[TwinVM] [trace] #240    t27230  nr=57   a0=0x130 a1=0x0 a2=0x73081ee588
+[TwinVM] [trace] #241    t27230  nr=57   a0=0x131 a1=0x0 a2=0x73081ee590
+[TwinVM] [trace] #242    t27230  nr=57   a0=0x132 a1=0x0 a2=0x73081ee598
+[TwinVM] [trace] #243    t27230  nr=57   a0=0x133 a1=0x0 a2=0x73081ee5a0
+[TwinVM] [trace] #244    t27230  nr=57   a0=0x134 a1=0x0 a2=0x73081ee5a8
+[TwinVM] [trace] #245    t27230  nr=57   a0=0x135 a1=0x0 a2=0x73081ee5b0
+[TwinVM] [trace] #246    t27230  nr=57   a0=0x136 a1=0x0 a2=0x73081ee5b8
+[TwinVM] [trace] #247    t27230  nr=57   a0=0x137 a1=0x0 a2=0x73081ee5c0
+[TwinVM] [trace] #248    t27230  nr=57   a0=0x138 a1=0x0 a2=0x73081ee5c8
+[TwinVM] [trace] #249    t27230  nr=57   a0=0x139 a1=0x0 a2=0x73081ee5d0
+[TwinVM] [trace] #250    t27230  nr=57   a0=0x13a a1=0x0 a2=0x73081ee5d8
+[TwinVM] [trace] #251    t27230  nr=57   a0=0x13b a1=0x0 a2=0x73081ee5e0
+[TwinVM] [trace] #252    t27230  nr=57   a0=0x13c a1=0x0 a2=0x73081ee5e8
+[TwinVM] [trace] #253    t27230  nr=57   a0=0x13d a1=0x0 a2=0x73081ee5f0
+[TwinVM] [trace] #254    t27230  nr=57   a0=0x13e a1=0x0 a2=0x73081ee5f8
+[TwinVM] [trace] #255    t27230  nr=57   a0=0x13f a1=0x0 a2=0x73081ee600
+[TwinVM] [trace] #256    t27230  nr=57   a0=0x140 a1=0x0 a2=0x73081ee608
+[TwinVM] [trace] #257    t27230  nr=57   a0=0x141 a1=0x0 a2=0x73081ee610
+[TwinVM] [trace] #258    t27230  nr=57   a0=0x142 a1=0x0 a2=0x73081ee618
+[TwinVM] [trace] #259    t27230  nr=57   a0=0x143 a1=0x0 a2=0x73081ee620
+[TwinVM] [trace] #260    t27230  nr=57   a0=0x144 a1=0x0 a2=0x73081ee628
+[TwinVM] [trace] #261    t27230  nr=57   a0=0x145 a1=0x0 a2=0x73081ee630
+[TwinVM] [trace] #262    t27230  nr=57   a0=0x146 a1=0x0 a2=0x73081ee638
+[TwinVM] [trace] #263    t27230  nr=57   a0=0x147 a1=0x0 a2=0x73081ee640
+[TwinVM] [trace] #264    t27230  nr=57   a0=0x148 a1=0x0 a2=0x73081ee648
+[TwinVM] [trace] #265    t27230  nr=57   a0=0x149 a1=0x0 a2=0x73081ee650
+[TwinVM] [trace] #266    t27230  nr=57   a0=0x14a a1=0x0 a2=0x73081ee658
+[TwinVM] [trace] #267    t27230  nr=57   a0=0x14b a1=0x0 a2=0x73081ee660
+[TwinVM] [trace] #268    t27230  nr=57   a0=0x14c a1=0x0 a2=0x73081ee668
+[TwinVM] [trace] #269    t27230  nr=57   a0=0x14d a1=0x0 a2=0x73081ee670
+[TwinVM] [trace] #270    t27230  nr=57   a0=0x14e a1=0x0 a2=0x73081ee678
+[TwinVM] [trace] #271    t27230  nr=57   a0=0x14f a1=0x0 a2=0x73081ee680
+[TwinVM] [trace] #272    t27230  nr=57   a0=0x150 a1=0x0 a2=0x73081ee688
+[TwinVM] [trace] #273    t27230  nr=57   a0=0x151 a1=0x0 a2=0x73081ee690
+[TwinVM] [trace] #274    t27230  nr=57   a0=0x152 a1=0x0 a2=0x73081ee698
+[TwinVM] [trace] #275    t27230  nr=57   a0=0x153 a1=0x0 a2=0x73081ee6a0
+[TwinVM] [trace] #276    t27230  nr=57   a0=0x154 a1=0x0 a2=0x73081ee6a8
+[TwinVM] [trace] #277    t27230  nr=57   a0=0x155 a1=0x0 a2=0x73081ee6b0
+[TwinVM] [trace] #278    t27230  nr=57   a0=0x156 a1=0x0 a2=0x73081ee6b8
+[TwinVM] [trace] #279    t27230  nr=57   a0=0x157 a1=0x0 a2=0x73081ee6c0
+[TwinVM] [trace] #280    t27230  nr=57   a0=0x158 a1=0x0 a2=0x73081ee6c8
+[TwinVM] [trace] #281    t27230  nr=57   a0=0x159 a1=0x0 a2=0x73081ee6d0
+[TwinVM] [trace] #282    t27230  nr=57   a0=0x15a a1=0x0 a2=0x73081ee6d8
+[TwinVM] [trace] #283    t27230  nr=57   a0=0x15b a1=0x0 a2=0x73081ee6e0
+[TwinVM] [trace] #284    t27230  nr=57   a0=0x15c a1=0x0 a2=0x73081ee6e8
+[TwinVM] [trace] #285    t27230  nr=57   a0=0x15d a1=0x0 a2=0x73081ee6f0
+[TwinVM] [trace] #286    t27230  nr=57   a0=0x15e a1=0x0 a2=0x73081ee6f8
+[TwinVM] [trace] #287    t27230  nr=57   a0=0x15f a1=0x0 a2=0x73081ee700
+[TwinVM] [trace] #288    t27230  nr=57   a0=0x160 a1=0x0 a2=0x73081ee708
+[TwinVM] [trace] #289    t27230  nr=57   a0=0x161 a1=0x0 a2=0x73081ee710
+[TwinVM] [trace] #290    t27230  nr=57   a0=0x162 a1=0x0 a2=0x73081ee718
+[TwinVM] [trace] #291    t27230  nr=57   a0=0x163 a1=0x0 a2=0x73081ee720
+[TwinVM] [trace] #292    t27230  nr=57   a0=0x164 a1=0x0 a2=0x73081ee728
+[TwinVM] [trace] #293    t27230  nr=57   a0=0x165 a1=0x0 a2=0x73081ee730
+[TwinVM] [trace] #294    t27230  nr=57   a0=0x166 a1=0x0 a2=0x73081ee738
+[TwinVM] [trace] #295    t27230  nr=57   a0=0x167 a1=0x0 a2=0x73081ee740
+[TwinVM] [trace] #296    t27230  nr=57   a0=0x168 a1=0x0 a2=0x73081ee748
+[TwinVM] [trace] #297    t27230  nr=57   a0=0x169 a1=0x0 a2=0x73081ee750
+[TwinVM] [trace] #298    t27230  nr=57   a0=0x16a a1=0x0 a2=0x73081ee758
+[TwinVM] [trace] #299    t27230  nr=57   a0=0x16b a1=0x0 a2=0x73081ee760
+[TwinVM] [trace] #300    t27230  nr=57   a0=0x16c a1=0x0 a2=0x73081ee768
+[TwinVM] [trace] #301    t27230  nr=57   a0=0x16d a1=0x0 a2=0x73081ee770
+[TwinVM] [trace] #302    t27230  nr=57   a0=0x16e a1=0x0 a2=0x73081ee778
+[TwinVM] [trace] #303    t27230  nr=57   a0=0x16f a1=0x0 a2=0x73081ee780
+[TwinVM] [trace] #304    t27230  nr=57   a0=0x170 a1=0x0 a2=0x73081ee788
+[TwinVM] [trace] #305    t27230  nr=57   a0=0x171 a1=0x0 a2=0x73081ee790
+[TwinVM] [trace] #306    t27230  nr=57   a0=0x172 a1=0x0 a2=0x73081ee798
+[TwinVM] [trace] #307    t27230  nr=57   a0=0x173 a1=0x0 a2=0x73081ee7a0
+[TwinVM] [trace] #308    t27230  nr=57   a0=0x174 a1=0x0 a2=0x73081ee7a8
+[TwinVM] [trace] #309    t27230  nr=57   a0=0x175 a1=0x0 a2=0x73081ee7b0
+[TwinVM] [trace] #310    t27230  nr=57   a0=0x176 a1=0x0 a2=0x73081ee7b8
+[TwinVM] [trace] #311    t27230  nr=57   a0=0x177 a1=0x0 a2=0x73081ee7c0
+[TwinVM] [trace] #312    t27230  nr=57   a0=0x178 a1=0x0 a2=0x73081ee7c8
+[TwinVM] [trace] #313    t27230  nr=57   a0=0x179 a1=0x0 a2=0x73081ee7d0
+[TwinVM] [trace] #314    t27230  nr=57   a0=0x17a a1=0x0 a2=0x73081ee7d8
+[TwinVM] [trace] #315    t27230  nr=57   a0=0x17b a1=0x0 a2=0x73081ee7e0
+[TwinVM] [trace] #316    t27230  nr=57   a0=0x17c a1=0x0 a2=0x73081ee7e8
+[TwinVM] [trace] #317    t27230  nr=57   a0=0x17d a1=0x0 a2=0x73081ee7f0
+[TwinVM] [trace] #318    t27230  nr=57   a0=0x17e a1=0x0 a2=0x73081ee7f8
+[TwinVM] [trace] #319    t27230  nr=57   a0=0x17f a1=0x0 a2=0x73081ee800
+[TwinVM] [trace] #320    t27230  nr=57   a0=0x180 a1=0x0 a2=0x73081ee808
+[TwinVM] [trace] #321    t27230  nr=57   a0=0x181 a1=0x0 a2=0x73081ee810
+[TwinVM] [trace] #322    t27230  nr=57   a0=0x182 a1=0x0 a2=0x73081ee818
+[TwinVM] [trace] #323    t27230  nr=57   a0=0x183 a1=0x0 a2=0x73081ee820
+[TwinVM] [trace] #324    t27230  nr=57   a0=0x184 a1=0x0 a2=0x73081ee828
+[TwinVM] [trace] #325    t27230  nr=57   a0=0x185 a1=0x0 a2=0x73081ee830
+[TwinVM] [trace] #326    t27230  nr=57   a0=0x186 a1=0x0 a2=0x73081ee838
+[TwinVM] [trace] #327    t27230  nr=57   a0=0x187 a1=0x0 a2=0x73081ee840
+[TwinVM] [trace] #328    t27230  nr=57   a0=0x188 a1=0x0 a2=0x73081ee848
+[TwinVM] [trace] #329    t27230  nr=57   a0=0x189 a1=0x0 a2=0x73081ee850
+[TwinVM] [trace] #330    t27230  nr=57   a0=0x18a a1=0x0 a2=0x73081ee858
+[TwinVM] [trace] #331    t27230  nr=57   a0=0x18b a1=0x0 a2=0x73081ee860
+[TwinVM] [trace] #332    t27230  nr=57   a0=0x18c a1=0x0 a2=0x73081ee868
+[TwinVM] [trace] #333    t27230  nr=57   a0=0x18d a1=0x0 a2=0x73081ee870
+[TwinVM] [trace] #334    t27230  nr=57   a0=0x18e a1=0x0 a2=0x73081ee878
+[TwinVM] [trace] #335    t27230  nr=57   a0=0x18f a1=0x0 a2=0x73081ee880
+[TwinVM] [trace] #336    t27230  nr=57   a0=0x190 a1=0x0 a2=0x73081ee888
+[TwinVM] [trace] #337    t27230  nr=57   a0=0x191 a1=0x0 a2=0x73081ee890
+[TwinVM] [trace] #338    t27230  nr=57   a0=0x192 a1=0x0 a2=0x73081ee898
+[TwinVM] [trace] #339    t27230  nr=57   a0=0x193 a1=0x0 a2=0x73081ee8a0
+[TwinVM] [trace] #340    t27230  nr=57   a0=0x194 a1=0x0 a2=0x73081ee8a8
+[TwinVM] [trace] #341    t27230  nr=57   a0=0x195 a1=0x0 a2=0x73081ee8b0
+[TwinVM] [trace] #342    t27230  nr=57   a0=0x196 a1=0x0 a2=0x73081ee8b8
+[TwinVM] [trace] #343    t27230  nr=57   a0=0x197 a1=0x0 a2=0x73081ee8c0
+[TwinVM] [trace] #344    t27230  nr=57   a0=0x198 a1=0x0 a2=0x73081ee8c8
+[TwinVM] [trace] #345    t27230  nr=57   a0=0x199 a1=0x0 a2=0x73081ee8d0
+[TwinVM] [trace] #346    t27230  nr=57   a0=0x19a a1=0x0 a2=0x73081ee8d8
+[TwinVM] [trace] #347    t27230  nr=57   a0=0x19b a1=0x0 a2=0x73081ee8e0
+[TwinVM] [trace] #348    t27230  nr=57   a0=0x19c a1=0x0 a2=0x73081ee8e8
+[TwinVM] [trace] #349    t27230  nr=57   a0=0x19d a1=0x0 a2=0x73081ee8f0
+[TwinVM] [trace] #350    t27230  nr=57   a0=0x19e a1=0x0 a2=0x73081ee8f8
+[TwinVM] [trace] #351    t27230  nr=57   a0=0x19f a1=0x0 a2=0x73081ee900
+[TwinVM] [trace] #352    t27230  nr=57   a0=0x1a0 a1=0x0 a2=0x73081ee908
+[TwinVM] [trace] #353    t27230  nr=57   a0=0x1a1 a1=0x0 a2=0x73081ee910
+[TwinVM] [trace] #354    t27230  nr=57   a0=0x1a2 a1=0x0 a2=0x73081ee918
+[TwinVM] [trace] #355    t27230  nr=57   a0=0x1a3 a1=0x0 a2=0x73081ee920
+[TwinVM] [trace] #356    t27230  nr=57   a0=0x1a4 a1=0x0 a2=0x73081ee928
+[TwinVM] [trace] #357    t27230  nr=57   a0=0x1a5 a1=0x0 a2=0x73081ee930
+[TwinVM] [trace] #358    t27230  nr=57   a0=0x1a6 a1=0x0 a2=0x73081ee938
+[TwinVM] [trace] #359    t27230  nr=57   a0=0x1a7 a1=0x0 a2=0x73081ee940
+[TwinVM] [trace] #360    t27230  nr=57   a0=0x1a8 a1=0x0 a2=0x73081ee948
+[TwinVM] [trace] #361    t27230  nr=57   a0=0x1a9 a1=0x0 a2=0x73081ee950
+[TwinVM] [trace] #362    t27230  nr=57   a0=0x1aa a1=0x0 a2=0x73081ee958
+[TwinVM] [trace] #363    t27230  nr=57   a0=0x1ab a1=0x0 a2=0x73081ee960
+[TwinVM] [trace] #364    t27230  nr=57   a0=0x1ac a1=0x0 a2=0x73081ee968
+[TwinVM] [trace] #365    t27230  nr=57   a0=0x1ad a1=0x0 a2=0x73081ee970
+[TwinVM] [trace] #366    t27230  nr=57   a0=0x1ae a1=0x0 a2=0x73081ee978
+[TwinVM] [trace] #367    t27230  nr=57   a0=0x1af a1=0x0 a2=0x73081ee980
+[TwinVM] [trace] #368    t27230  nr=57   a0=0x1b0 a1=0x0 a2=0x73081ee988
+[TwinVM] [trace] #369    t27230  nr=57   a0=0x1b1 a1=0x0 a2=0x73081ee990
+[TwinVM] [trace] #370    t27230  nr=57   a0=0x1b2 a1=0x0 a2=0x73081ee998
+[TwinVM] [trace] #371    t27230  nr=57   a0=0x1b3 a1=0x0 a2=0x73081ee9a0
+[TwinVM] [trace] #372    t27230  nr=57   a0=0x1b4 a1=0x0 a2=0x73081ee9a8
+[TwinVM] [trace] #373    t27230  nr=57   a0=0x1b5 a1=0x0 a2=0x73081ee9b0
+[TwinVM] [trace] #374    t27230  nr=57   a0=0x1b6 a1=0x0 a2=0x73081ee9b8
+[TwinVM] [trace] #375    t27230  nr=57   a0=0x1b7 a1=0x0 a2=0x73081ee9c0
+[TwinVM] [trace] #376    t27230  nr=57   a0=0x1b8 a1=0x0 a2=0x73081ee9c8
+[TwinVM] [trace] #377    t27230  nr=57   a0=0x1b9 a1=0x0 a2=0x73081ee9d0
+[TwinVM] [trace] #378    t27230  nr=57   a0=0x1ba a1=0x0 a2=0x73081ee9d8
+[TwinVM] [trace] #379    t27230  nr=57   a0=0x1bb a1=0x0 a2=0x73081ee9e0
+[TwinVM] [trace] #380    t27230  nr=57   a0=0x1bc a1=0x0 a2=0x73081ee9e8
+[TwinVM] [trace] #381    t27230  nr=57   a0=0x1bd a1=0x0 a2=0x73081ee9f0
+[TwinVM] [trace] #382    t27230  nr=57   a0=0x1be a1=0x0 a2=0x73081ee9f8
+[TwinVM] [trace] #383    t27230  nr=57   a0=0x1bf a1=0x0 a2=0x73081eea00
+[TwinVM] [trace] #384    t27230  nr=57   a0=0x1c0 a1=0x0 a2=0x73081eea08
+[TwinVM] [trace] #385    t27230  nr=57   a0=0x1c1 a1=0x0 a2=0x73081eea10
+[TwinVM] [trace] #386    t27230  nr=57   a0=0x1c2 a1=0x0 a2=0x73081eea18
+[TwinVM] [trace] #387    t27230  nr=57   a0=0x1c3 a1=0x0 a2=0x73081eea20
+[TwinVM] [trace] #388    t27230  nr=57   a0=0x1c4 a1=0x0 a2=0x73081eea28
+[TwinVM] [trace] #389    t27230  nr=57   a0=0x1c5 a1=0x0 a2=0x73081eea30
+[TwinVM] [trace] #390    t27230  nr=57   a0=0x1c6 a1=0x0 a2=0x73081eea38
+[TwinVM] [trace] #391    t27230  nr=57   a0=0x1c7 a1=0x0 a2=0x73081eea40
+[TwinVM] [trace] #392    t27230  nr=57   a0=0x1c8 a1=0x0 a2=0x73081eea48
+[TwinVM] [trace] #393    t27230  nr=57   a0=0x1c9 a1=0x0 a2=0x73081eea50
+[TwinVM] [trace] #394    t27230  nr=57   a0=0x1ca a1=0x0 a2=0x73081eea58
+[TwinVM] [trace] #395    t27230  nr=57   a0=0x1cb a1=0x0 a2=0x73081eea60
+[TwinVM] [trace] #396    t27230  nr=57   a0=0x1cc a1=0x0 a2=0x73081eea68
+[TwinVM] [trace] #397    t27230  nr=57   a0=0x1cd a1=0x0 a2=0x73081eea70
+[TwinVM] [trace] #398    t27230  nr=57   a0=0x1ce a1=0x0 a2=0x73081eea78
+[TwinVM] [trace] #399    t27230  nr=57   a0=0x1cf a1=0x0 a2=0x73081eea80
+[TwinVM] [trace] #400    t27230  nr=57   a0=0x1d0 a1=0x0 a2=0x73081eea88
+[TwinVM] [trace] #401    t27230  nr=57   a0=0x1d1 a1=0x0 a2=0x73081eea90
+[TwinVM] [ptrace] 回填 #401：nr=57 → x0=0（tid=27230）
+[TwinVM] [trace] #402    t27230  nr=57   a0=0x1d2 a1=0x0 a2=0x73081eea98
+[TwinVM] [trace] #403    t27230  nr=57   a0=0x1d3 a1=0x0 a2=0x73081eeaa0
+[TwinVM] [trace] #404    t27230  nr=57   a0=0x1d4 a1=0x0 a2=0x73081eeaa8
+[TwinVM] [trace] #405    t27230  nr=57   a0=0x1d5 a1=0x0 a2=0x73081eeab0
+[TwinVM] [trace] #406    t27230  nr=57   a0=0x1d6 a1=0x0 a2=0x73081eeab8
+[TwinVM] [trace] #407    t27230  nr=57   a0=0x1d7 a1=0x0 a2=0x73081eeac0
+[TwinVM] [trace] #408    t27230  nr=57   a0=0x1d8 a1=0x0 a2=0x73081eeac8
+[TwinVM] [trace] #409    t27230  nr=57   a0=0x1d9 a1=0x0 a2=0x73081eead0
+[TwinVM] [trace] #410    t27230  nr=57   a0=0x1da a1=0x0 a2=0x73081eead8
+[TwinVM] [trace] #411    t27230  nr=57   a0=0x1db a1=0x0 a2=0x73081eeae0
+[TwinVM] [trace] #412    t27230  nr=57   a0=0x1dc a1=0x0 a2=0x73081eeae8
+[TwinVM] [trace] #413    t27230  nr=57   a0=0x1dd a1=0x0 a2=0x73081eeaf0
+[TwinVM] [trace] #414    t27230  nr=57   a0=0x1de a1=0x0 a2=0x73081eeaf8
+[TwinVM] [trace] #415    t27230  nr=57   a0=0x1df a1=0x0 a2=0x73081eeb00
+[TwinVM] [trace] #416    t27230  nr=57   a0=0x1e0 a1=0x0 a2=0x73081eeb08
+[TwinVM] [trace] #417    t27230  nr=57   a0=0x1e1 a1=0x0 a2=0x73081eeb10
+[TwinVM] [trace] #418    t27230  nr=57   a0=0x1e2 a1=0x0 a2=0x73081eeb18
+[TwinVM] [trace] #419    t27230  nr=57   a0=0x1e3 a1=0x0 a2=0x73081eeb20
+[TwinVM] [trace] #420    t27230  nr=57   a0=0x1e4 a1=0x0 a2=0x73081eeb28
+[TwinVM] [trace] #421    t27230  nr=57   a0=0x1e5 a1=0x0 a2=0x73081eeb30
+[TwinVM] [trace] #422    t27230  nr=57   a0=0x1e6 a1=0x0 a2=0x73081eeb38
+[TwinVM] [trace] #423    t27230  nr=57   a0=0x1e7 a1=0x0 a2=0x73081eeb40
+[TwinVM] [trace] #424    t27230  nr=57   a0=0x1e8 a1=0x0 a2=0x73081eeb48
+[TwinVM] [trace] #425    t27230  nr=57   a0=0x1e9 a1=0x0 a2=0x73081eeb50
+[TwinVM] [trace] #426    t27230  nr=57   a0=0x1ea a1=0x0 a2=0x73081eeb58
+[TwinVM] [trace] #427    t27230  nr=57   a0=0x1eb a1=0x0 a2=0x73081eeb60
+[TwinVM] [trace] #428    t27230  nr=57   a0=0x1ec a1=0x0 a2=0x73081eeb68
+[TwinVM] [trace] #429    t27230  nr=57   a0=0x1ed a1=0x0 a2=0x73081eeb70
+[TwinVM] [trace] #430    t27230  nr=57   a0=0x1ee a1=0x0 a2=0x73081eeb78
+[TwinVM] [trace] #431    t27230  nr=57   a0=0x1ef a1=0x0 a2=0x73081eeb80
+[TwinVM] [trace] #432    t27230  nr=57   a0=0x1f0 a1=0x0 a2=0x73081eeb88
+[TwinVM] [trace] #433    t27230  nr=57   a0=0x1f1 a1=0x0 a2=0x73081eeb90
+[TwinVM] [trace] #434    t27230  nr=57   a0=0x1f2 a1=0x0 a2=0x73081eeb98
+[TwinVM] [trace] #435    t27230  nr=57   a0=0x1f3 a1=0x0 a2=0x73081eeba0
+[TwinVM] [trace] #436    t27230  nr=57   a0=0x1f4 a1=0x0 a2=0x73081eeba8
+[TwinVM] [trace] #437    t27230  nr=57   a0=0x1f5 a1=0x0 a2=0x73081eebb0
+[TwinVM] [trace] #438    t27230  nr=57   a0=0x1f6 a1=0x0 a2=0x73081eebb8
+[TwinVM] [trace] #439    t27230  nr=57   a0=0x1f7 a1=0x0 a2=0x73081eebc0
+[TwinVM] [trace] #440    t27230  nr=57   a0=0x1f8 a1=0x0 a2=0x73081eebc8
+[TwinVM] [trace] #441    t27230  nr=57   a0=0x1f9 a1=0x0 a2=0x73081eebd0
+[TwinVM] [trace] #442    t27230  nr=57   a0=0x1fa a1=0x0 a2=0x73081eebd8
+[TwinVM] [trace] #443    t27230  nr=57   a0=0x1fb a1=0x0 a2=0x73081eebe0
+[TwinVM] [trace] #444    t27230  nr=57   a0=0x1fc a1=0x0 a2=0x73081eebe8
+[TwinVM] [trace] #445    t27230  nr=57   a0=0x1fd a1=0x0 a2=0x73081eebf0
+[TwinVM] [trace] #446    t27230  nr=57   a0=0x1fe a1=0x0 a2=0x73081eebf8
+[TwinVM] [trace] #447    t27230  nr=57   a0=0x1ff a1=0x0 a2=0x73081eec00
+[TwinVM] [trace] #448    t27230  nr=64   a0=0x8b a1=0x723c4eaf20 a2=0x56
+[TwinVM] ▶ 槽位 fd 清理完成（关掉 446 个高位 fd，保留 console=139）
+[TwinVM] [trace] #449    t27230  nr=64   a0=0x8b a1=0x723c4eaf20 a2=0x43
+[TwinVM] ▶ [1/6] 槽位启动 pid=27230，ROM 67 个文件就绪
+[TwinVM] [trace] #450    t27230  nr=64   a0=0x8b a1=0x723c4eaf20 a2=0x36
+[TwinVM] ▶ [2/6] 安装拦截器（USER_NOTIF）…
+[TwinVM] [trace] #451    t27230  nr=64   a0=0x8b a1=0x723c4eaf20 a2=0x5b
+[TwinVM] ▶ [2/6] ✓ 拦截器就绪（**ptrace 后端**：seccomp 已被系统封死）
+[TwinVM] [trace] #452    t27230  nr=64   a0=0x8b a1=0x723c4eaf20 a2=0x57
+[TwinVM] ▶ [3/6] ptrace 模式：跳过监听线程（拦截在示踪器里完成）
+[TwinVM] [trace] #453    t27230  nr=64   a0=0x8b a1=0x723c4eaf20 a2=0x31
+[TwinVM] ▶ [4/6] 装载 dalvikvm + linker64…
+[TwinVM] [trace] #454    t27230  nr=64   a0=0x8b a1=0x723c4eae70 a2=0x30
+[TwinVM] exec_dyn: exe mapped bias=0x730861f000
+[TwinVM] [trace] #455    t27230  nr=64   a0=0x8b a1=0x723c4eae70 a2=0x33
+[TwinVM] exec_dyn: linker mapped bias=0x723c158000
+[TwinVM] [trace] #456    t27230  nr=64   a0=0x8b a1=0x723c4eae70 a2=0x80
+[TwinVM] exec_dyn: exe bias=0x730861f000 linker bias=0x723c158000 entry=0x723c1a9000 sp=0x723c157b00 phdr=0x730861f040 phnum=14
+[TwinVM] [trace] #457    t27230  nr=64   a0=0x8b a1=0x723c4eaf20 a2=0x59
+[TwinVM] ▶ [5/6] ✓ 装载完成 entry=0x723c1a9000，跳转入 guest（ART 启动）
+[TwinVM] [trace] #458    t27230  nr=64   a0=0x8b a1=0x723c4eaf20 a2=0x45
+[TwinVM] ▶ [6/6] 已进入 ART，后续输出见下方实时日志
+[TwinVM] [trace] #459    t27230  nr=96   a0=0x723c2ea0a8 a1=0x730861c000 a2=0x3
+[TwinVM] [trace] #460    t27230  nr=48   a0=0xffffff9c a1=0x723c1630ba a2=0x4
+[TwinVM] [trace] #461    t27230  nr=167  a0=0x53564d41 a1=0x0 a2=0x7308552000
+[TwinVM] [trace] #462    t27230  nr=167  a0=0x53564d41 a1=0x0 a2=0x73089c0000
+[TwinVM] [trace] #463    t27230  nr=167  a0=0x53564d41 a1=0x0 a2=0x723c2e3000
+[TwinVM] [trace] #464    t27230  nr=167  a0=0x53564d41 a1=0x0 a2=0x73089bf000
+[TwinVM] [trace] #465    t27230  nr=167  a0=0x53564d41 a1=0x0 a2=0x730861b000
+[TwinVM] [trace] #466    t27230  nr=167  a0=0x53564d41 a1=0x0 a2=0x7308550000
+[TwinVM] [trace] #467    t27230  nr=167  a0=0x53564d41 a1=0x0 a2=0x730854f000
+[TwinVM] [trace] #468    t27230  nr=167  a0=0x53564d41 a1=0x0 a2=0x723bff8000
+[TwinVM] [trace] #469    t27230  nr=25   a0=0x0 a1=0x3 a2=0x3
+[TwinVM] [trace] #470    t27230  nr=25   a0=0x1 a1=0x3 a2=0x3
+[TwinVM] [trace] #471    t27230  nr=25   a0=0x2 a1=0x3 a2=0x3
+[TwinVM] [trace] #472    t27230  nr=79   a0=0xffffff9c a1=0x723c2e9df1 a2=0x723c156430
+[TwinVM] [trace] #473    t27230  nr=56   a0=0xffffff9c a1=0x723c2e9df1 a2=0x88000
+[TwinVM] [trace] #474    t27230  nr=167  a0=0x3 a1=0x0 a2=0x0
+[TwinVM] [trace] #475    t27230  nr=79   a0=0xffffff9c a1=0x723c15a5da a2=0x723c156578
+[TwinVM] [trace] #476    t27230  nr=79   a0=0xffffff9c a1=0x723c157ccd a2=0x723c156578
+[TwinVM] [trace] #477    t27230  nr=66   a0=0x2 a1=0x723c155f78 a2=0x2
+[TwinVM] [trace] #478    t27230  nr=198  a0=0x1 a1=0x80802 a2=0x0
+[TwinVM] [trace] #479    t27230  nr=66   a0=0x2 a1=0x723c155e80 a2=0x4
+[TwinVM] [trace] #480    t27230  nr=167  a0=0x53564d41 a1=0x0 a2=0x7308544000
+[TwinVM] [trace] #481    t27230  nr=167  a0=0x27 a1=0x0 a2=0x0
+[TwinVM] [trace] #482    t27230  nr=56   a0=0xffffff9c a1=0x723c159f7d a2=0x80000
+[TwinVM] [trace] #483    t27230  nr=167  a0=0x10 a1=0x7308558cf8 a2=0x0
+[TwinVM] [trace] #484    t27230  nr=198  a0=0x1 a1=0x80802 a2=0x0
+[TwinVM] [trace] #485    t27230  nr=66   a0=0x2 a1=0x73085581a0 a2=0x4
+[TwinVM] [trace] #486    t27230  nr=167  a0=0x4 a1=0x1 a2=0xfffffff
+[TwinVM] [trace] #487    t27230  nr=167  a0=0x59616d61 a1=0xffffffffffffffff a2=0xfffffff
+[TwinVM] [trace] #488    t27230  nr=198  a0=0x1 a1=0x80802 a2=0x0
+[TwinVM] [trace] #489    t27230  nr=66   a0=0x2 a1=0x7308557f10 a2=0x4
+
+[EXIT=0]

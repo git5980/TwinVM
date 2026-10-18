@@ -1,0 +1,458 @@
+/* BPF 过滤器（生成于 2026-10-12 Stage1，gen_bpf.py）——请勿手改
+ * 分层：安全原语直达内核（半虚拟化——同 VMOS），文件 I/O TRAP 进用户态内核，
+ * write(console) 直通避免 handler 递归。共 x86_64=147 / arm64=143 条
+ *
+ * v0.2.8：exit（线程退出）/ gettid（线程入口）加入放行清单 —— 判决表里所有
+ * VM_PT* 直发内核的 syscall 必须出现在 VM_BPF_ALLOW_NRS 里，否则 handler 内
+ * 直发会二次 TRAP（内核不执行 + 信号挂起 + 迟到投递乱判决）。
+ * v0.7.22：引擎自身在 handler 内调用的 syscall（process_vm_readv/writev）同样
+ * 必须在放行清单里（vm_engine_syscall_nrs 自检）。
+ * v0.8.0：新增 VM_BPF_NOTIF_INSTRUCTIONS（SECCOMP_RET_USER_NOTIF 后端）。 */
+#if defined(__x86_64__)
+#define VM_BPF_ALLOW_NRS_COUNT 38
+#define VM_BPF_INSTRUCTIONS { \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 4), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, AUDIT_ARCH_X86_64, 0, 144), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 231, 140, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 15, 138, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 60, 136, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 186, 134, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 39, 132, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 110, 130, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 12, 128, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 11, 126, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 10, 124, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 25, 122, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 28, 120, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 202, 118, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 218, 116, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 14, 114, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 131, 112, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 62, 110, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 234, 108, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 428, 106, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 61, 104, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 56, 102, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 228, 100, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 318, 98, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 24, 96, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 203, 94, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 324, 92, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 302, 90, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 96, 88, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 35, 86, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 230, 84, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 323, 82, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 291, 80, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 233, 78, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 232, 76, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 281, 74, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 317, 72, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 309, 70, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 203, 68, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 158, 66, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 41, 0, 3), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 16), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 1, 62, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 13, 0, 6), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 16), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 31, 1, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 24), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 0, 54, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 17, 0, 3), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 16), \
+BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 10000, 50, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 1, 0, 5), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 16), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (uint32_t)console_fd, 44, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 10000, 44, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGT | BPF_K, 2, 43, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 0, 0, 5), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 16), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (uint32_t)console_fd, 38, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 10000, 37, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGT | BPF_K, 2, 35, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 3, 0, 5), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 16), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (uint32_t)console_fd, 31, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 10000, 30, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGT | BPF_K, 2, 28, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 16, 0, 5), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 16), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (uint32_t)console_fd, 24, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 10000, 23, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGT | BPF_K, 2, 21, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 72, 0, 5), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 16), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (uint32_t)console_fd, 16, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 10000, 16, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGT | BPF_K, 2, 14, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 42, 0, 6), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 16), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (uint32_t)console_fd, 10, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 10000, 9, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGT | BPF_K, 2, 7, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 9, 0, 5), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 48), \
+BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 10000, 0, 2), \
+BPF_JUMP(BPF_JMP | BPF_JGT | BPF_K, 10063, 1, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS), \
+}
+/* 放行清单（名字, 号）——运行时一致性自检 + 离线回归测试使用 */
+#define VM_BPF_ALLOW_NRS { {"exit_group", 231}, {"rt_sigreturn", 15}, {"exit", 60}, {"gettid", 186}, {"getpid", 39}, {"getppid", 110}, {"brk", 12}, {"munmap", 11}, {"mprotect", 10}, {"mremap", 25}, {"madvise", 28}, {"futex", 202}, {"set_tid_address", 218}, {"rt_sigprocmask", 14}, {"sigaltstack", 131}, {"kill", 62}, {"tgkill", 234}, {"rt_sigtimedwait", 428}, {"wait4", 61}, {"clone", 56}, {"clock_gettime", 228}, {"getrandom", 318}, {"sched_yield", 24}, {"sched_getaffinity", 203}, {"membarrier", 324}, {"prlimit64", 302}, {"gettimeofday", 96}, {"nanosleep", 35}, {"clock_nanosleep", 230}, {"userfaultfd", 323}, {"epoll_create1", 291}, {"epoll_ctl", 233}, {"epoll_wait", 232}, {"epoll_pwait", 281}, {"pipe2", 317}, {"getcpu", 309}, {"sched_setaffinity", 203}, {"arch_prctl", 158} }
+#else
+#define VM_BPF_INSTRUCTIONS { \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 4), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, AUDIT_ARCH_AARCH64, 0, 140), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 94, 136, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 139, 134, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 93, 132, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 178, 130, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 172, 128, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 173, 126, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 214, 124, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 215, 122, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 226, 120, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 216, 118, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 233, 116, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 98, 114, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 96, 112, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 135, 110, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 132, 108, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 129, 106, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 131, 104, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 137, 102, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 260, 100, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 220, 98, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 113, 96, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 278, 94, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 124, 92, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 123, 90, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 283, 88, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 261, 86, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 169, 84, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 101, 82, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 115, 80, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 282, 78, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 20, 76, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 21, 74, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 22, 72, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 59, 70, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 168, 68, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 122, 66, 0), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 198, 0, 3), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 16), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 1, 62, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 134, 0, 6), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 16), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 31, 1, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 24), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 0, 54, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 67, 0, 3), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 16), \
+BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 10000, 50, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 64, 0, 5), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 16), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (uint32_t)console_fd, 44, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 10000, 44, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGT | BPF_K, 2, 43, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 63, 0, 5), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 16), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (uint32_t)console_fd, 38, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 10000, 37, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGT | BPF_K, 2, 35, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 57, 0, 5), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 16), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (uint32_t)console_fd, 31, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 10000, 30, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGT | BPF_K, 2, 28, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 29, 0, 5), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 16), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (uint32_t)console_fd, 24, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 10000, 23, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGT | BPF_K, 2, 21, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 25, 0, 5), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 16), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (uint32_t)console_fd, 16, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 10000, 16, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGT | BPF_K, 2, 14, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 203, 0, 6), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 16), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (uint32_t)console_fd, 10, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 10000, 9, 0), \
+BPF_JUMP(BPF_JMP | BPF_JGT | BPF_K, 2, 7, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 222, 0, 5), \
+BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 48), \
+BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 10000, 0, 2), \
+BPF_JUMP(BPF_JMP | BPF_JGT | BPF_K, 10063, 1, 0), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP), \
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS), \
+}
+/* v0.8.0：USER_NOTIF 版（同上） */
+#define VM_BPF_NOTIF_INSTRUCTIONS { \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 4), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, AUDIT_ARCH_AARCH64, 0, 139), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 94, 134, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 139, 132, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 93, 130, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 178, 128, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 172, 126, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 173, 124, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 214, 122, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 215, 120, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 226, 118, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 216, 116, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 233, 114, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 98, 112, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 96, 110, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 135, 108, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 132, 106, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 129, 104, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 131, 102, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 137, 100, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 260, 98, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 220, 96, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 113, 94, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 278, 92, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 124, 90, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 123, 88, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 283, 86, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 261, 84, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 169, 82, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 101, 80, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 115, 78, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 282, 76, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 20, 74, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 21, 72, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 22, 70, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 59, 68, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 168, 66, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 122, 64, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 17, 63, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 25, 61, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 43, 59, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 44, 57, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 47, 55, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 48, 53, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 49, 51, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 56, 49, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 57, 47, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 61, 45, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 62, 43, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 63, 41, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 64, 39, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 66, 37, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 78, 35, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 79, 33, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 80, 31, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 89, 29, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 99, 27, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 160, 25, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 163, 23, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 167, 21, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 172, 19, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 174, 17, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 175, 15, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 176, 13, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 177, 11, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 198, 9, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 203, 7, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 221, 5, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 269, 3, 0), \
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, 0), \
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 281, 1, 0), \
+        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW), \
+        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_USER_NOTIF), \
+        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP), \
+        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS), \
+}
+/* 放行清单（名字, 号）——运行时一致性自检 + 离线回归测试使用 */
+#define VM_BPF_ALLOW_NRS_COUNT 36
+#define VM_BPF_ALLOW_NRS { {"exit_group", 94}, {"rt_sigreturn", 139}, {"exit", 93}, {"gettid", 178}, {"getpid", 172}, {"getppid", 173}, {"brk", 214}, {"munmap", 215}, {"mprotect", 226}, {"mremap", 216}, {"madvise", 233}, {"futex", 98}, {"set_tid_address", 96}, {"rt_sigprocmask", 135}, {"sigaltstack", 132}, {"kill", 129}, {"tgkill", 131}, {"rt_sigtimedwait", 137}, {"wait4", 260}, {"clone", 220}, {"clock_gettime", 113}, {"getrandom", 278}, {"sched_yield", 124}, {"sched_getaffinity", 123}, {"membarrier", 283}, {"prlimit64", 261}, {"gettimeofday", 169}, {"nanosleep", 101}, {"clock_nanosleep", 115}, {"userfaultfd", 282}, {"epoll_create1", 20}, {"epoll_ctl", 21}, {"epoll_pwait", 22}, {"pipe2", 59}, {"getcpu", 168}, {"sched_setaffinity", 122} }
+#endif

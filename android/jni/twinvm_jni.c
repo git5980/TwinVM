@@ -1488,6 +1488,8 @@ static void tvm_hang_dump_procfs(pid_t pid) {
  * 影响：拦截形同虚设，guest 原生执行 + 我们再按待办回填 x0 → 结果错乱。
  * 代价：本函数不优化（它是 syscall 转发循环，慢一点远好过"悄悄失效"）。 */
 #pragma clang optimize off
+static void tvm_alrm_noop(int sig) { (void)sig; }   /* v1.2.63：SIGALRM 空处理 */
+
 static void* tvm_tracer_main(void* arg) {
     struct tvm_launch* L = arg;
     /* v0.9.0 ★ 关键改动：**在 fork 之前**（父进程里）先把 USER_NOTIF 过滤器装好。
@@ -2504,6 +2506,7 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
      * 子进程内恢复空掩码让 guest 看到正常世界。 */
     sigset_t chld_m, old_m;
     sigemptyset(&chld_m); sigaddset(&chld_m, SIGCHLD);
+    sigaddset(&chld_m, SIGALRM);      /* v1.2.63：ALRM 定向给 tracer（主线程屏蔽） */
     pthread_sigmask(SIG_BLOCK, &chld_m, &old_m);
     g_launch.rom = &rom; g_launch.bb = bb;
     g_launch.rfd = pfd[0]; g_launch.wfd = pfd[1];
@@ -2518,8 +2521,25 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
         if (g_live_fd >= 0) { close(g_live_fd); g_live_fd = -1; }
         return (*env)->NewStringUTF(env, "[TwinVM] 示踪线程创建失败");
     }
+    /* v1.2.63：SIGALRM 空处理器——setitimer 200ms 打断阻塞 waitpid 用
+     * （默认动作=杀进程，绝不能裸用）。一次性安装。 */
+    {
+        static int alrm_once = 0;
+        if (!alrm_once) {
+            alrm_once = 1;
+            struct sigaction sa;
+            memset(&sa, 0, sizeof(sa));
+            sa.sa_handler = tvm_alrm_noop; /* 空函数（不能用 SIG_IGN+SA_RESTART：waitpid 会自动重启拿不到 EINTR） */
+            sa.sa_flags = 0;                 /* 无 SA_RESTART：waitpid 返回 EINTR */
+            sigaction(SIGALRM, &sa, NULL);
+        }
+    }
     sem_wait(&g_launch_sem);               /* fork 完成，g_t_pid 就绪 */
     pthread_sigmask(SIG_SETMASK, &old_m, NULL);
+    {   /* v1.2.63：ALRM 定向——tracer 解除屏蔽（主线程仍屏蔽 → 定时器只打这里） */
+        sigset_t am; sigemptyset(&am); sigaddset(&am, SIGALRM);
+        pthread_sigmask(SIG_UNBLOCK, &am, NULL);
+    }
     pid_t pid = g_t_pid;
 
     size_t cap = 8192, len = 0, live_total = 0;

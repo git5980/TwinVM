@@ -1799,6 +1799,21 @@ static void* tvm_tracer_main(void* arg) {
          * 在停点执行——ptrace 请求只有本线程有资格（教训五第五击）。
          * tracee 此刻睡在 futex，本次停点是 PTRACE_SYSCALL 的即时返回。 */
         g_guest_ticks++;                     /* v1.2.19：任何停点都算"guest 在前进" */
+        /* v1.2.68 ★ 终极取证：停点级 [beat] 心跳（每 10s 无条件）。
+         * [chk] 直播揭示：stress 后 check 停跑但停点仍在——本心跳区分
+         * "循环死了"（无 beat）vs "检查块被绕过"（有 beat 无 chk）。 */
+        {
+            static time_t b_last = 0;
+            time_t bnow = time(NULL);
+            if (bnow - b_last >= 10) {
+                b_last = bnow;
+                char bb[160];
+                int bk = snprintf(bb, sizeof(bb),
+                    "[TwinVM] [beat] 循环活着（ticks=%llu 最近 nr=%d）\n",
+                    g_guest_ticks, g_t_last_nr);
+                live_write(bb, (size_t)bk);
+            }
+        }
         /* v1.2.62 ★★★ 优雅关机 v6·架构级：判定搬到 **tracer 线程**（真机
          * v1.2.61 实锤：主线程在 guest 启动 38~40s 间悄然死亡——alive 心跳
          * 与 graceful-watch 同时停摆，而 tracer 的 tee/trace 照常打到

@@ -939,17 +939,17 @@ static size_t tvm_read_tracee(pid_t t, unsigned long long addr, size_t n, char* 
     return 0;                     /* 失败：返回 0（老语义），errno 已由 pv 落日志 */
 }
 static void tvm_tee_stdio(pid_t t, long nr, const unsigned long long* a) {
-    static int budget = 256;               /* 限流：防止后期 stderr 刷屏 */
-    if (budget <= 0) return;
-    char pay[208]; size_t plen = 0;
-    /* v1.2.58 ★ 优雅关机 v3 的关键观测点：guest 的 write(1)（stdout）在
-     * ptrace 后端由 tracer tee（vm_console_fd 已被 v1.1.6 改指 live 文件，
-     * console 管道收不到 fd=1 数据）——v1.2.57 的 g_last_real_out 挂在
-     * 管道 read 上＝永远不被赋值。正解：在 tee 现场直接更新独立时钟。 */
+    /* v1.2.60 ★★★ 时钟更新必须在 budget 之前！v1.2.59 真机实锤：启动期
+     * stderr tee（44+ 次）耗光 256 预算 → budget<=0 提前 return →
+     * stress 的 stdout 到达时函数直接退出 → g_last_real_out 从未更新。
+     * budget 只该限"打印"，不能限"计时"。 */
     if ((nr == 64 || nr == 66) && a[0] == 1) {
         g_last_real_out = time(NULL);
         g_ticks_at_real_out = g_guest_ticks;
     }
+    static int budget = 256;               /* 限流：防止后期 stderr 刷屏 */
+    if (budget <= 0) return;
+    char pay[208]; size_t plen = 0;
     if (nr == 64) {                            /* write(fd, buf, count) */
         plen = tvm_read_tracee(t, a[1],
                  (size_t)(a[2] < 200 ? a[2] : 200), pay);

@@ -1747,82 +1747,30 @@ static void* tvm_tracer_main(void* arg) {
          *         WNOHANG+20ms 轮询态（驱动 graceful 检查）；
          *   新停点一到：立即回满速阻塞态。 */
         {
-            /* v1.2.74 ★★★ 信号无关硬保障（ALRM 之谜第八版仍未破——setitimer
-             * 声明可用、抢收已修、零 EINTR）：不再单赌信号。每 30 轮循环
-             * （约 1.5s 忙时/200ms 闲时）强制一次 20ms 轮询窗口——
-             * 静默期无论信号死活，graceful 检查必被驱动。
-             * 吞吐代价：忙时每 30 次停点多睡 20ms（≈0.7% 忙时开销）。 */
-            static unsigned spin = 0;
-            if (++spin >= 30) {
-                spin = 0;
-                pid_t pt = waitpid(-1, &st, WNOHANG | __WALL);
-                if (pt == 0) {
-                    struct timespec ts = {0, 20 * 1000 * 1000};
-                    nanosleep(&ts, NULL);
-                    if (tvm_graceful_check(1)) { g_t_status = 0; g_t_done = 1; break; }
-                } else if (pt > 0) {
-                    t = pt;                     /* 轮询窗口里正好有停点：照常处理 */
-                    goto have_stop;
+            /* v1.2.75 ★★★ 全 WNOHANG 两态轮询（一刀切掉全部信号机关）：
+             * 病史：ALRM 八版未破（可用声明+抢收修复后仍零 EINTR）；
+             * v1.2.74 的 20ms 车轮又把 mprotect 风暴拖慢 8 倍
+             * （27k/s→3.5k/s，风暴 42s 拖成 323s+——0.7% 估算彻底翻车：
+             * 停点处理极便宜，20ms 睡眠绝对值压倒一切）。
+             * 新机制（零信号依赖，两态自动切换）：
+             * ① 停点新鲜（<300ms）：WNOHANG 紧密自旋——停点间隔 ~35µs，
+             *    几微秒即命中，吞吐满速（v1.2.73 实测 27k/s）；
+             * ② 停点静默 ≥300ms：每轮睡 20ms 再探——futex 死锁期驱动
+             *    graceful（静默 8s 判据），CPU 趋零。 */
+            static long last_stop_ms = 0;
+            struct timespec now_ts;
+            clock_gettime(CLOCK_MONOTONIC, &now_ts);
+            long now_ms = now_ts.tv_sec * 1000 + now_ts.tv_nsec / 1000000;
+            if (t > 0) last_stop_ms = now_ms;    /* 上一轮有停点：刷新新鲜度 */
+            t = waitpid(-1, &st, WNOHANG | __WALL);
+            if (t == 0) {
+                if (now_ms - last_stop_ms < 300) {
+                    continue;                    /* 新鲜期：立即重试（停点将至） */
                 }
-            }
-            static int idle_poll = 0;             /* 0=阻塞态 非0=轮询态 */
-            static int alrm_ok = -1;             /* -1=未测 0=setitimer 被拒 1=可用 */
-            if (alrm_ok < 0) {
-                /* v1.2.71 ★ 真机 v1.2.69/70 实锤：[alrm] 就绪声明打了但
-                 * EINTR 永不命中——最大嫌疑 App seccomp 拒绝 setitimer
-                 * （返回值从未检查）。此处一次性试探：失败即记录并全程
-                 * 改用【时间戳兜底】：连续 300ms 无停点 → 进轮询态。 */
-                struct itimerval iv;
-                iv.it_value.tv_sec = 0; iv.it_value.tv_usec = 200 * 1000;
-                iv.it_interval.tv_sec = 0; iv.it_interval.tv_usec = 0;
-                alrm_ok = (setitimer(ITIMER_REAL, &iv, NULL) == 0) ? 1 : 0;
-                if (alrm_ok) {
-                    struct itimerval zv = {{0, 0}, {0, 0}};
-                    setitimer(ITIMER_REAL, &zv, NULL);
-                }
-                ptrace_log("[alrm] setitimer %s（%s）",
-                           alrm_ok ? "可用" : "被拒→时间戳兜底",
-                           alrm_ok ? "SIGALRM 打断 waitpid" : "静默 300ms 判定");
-            }
-            if (alrm_ok) {
-                if (!idle_poll) {
-                    struct itimerval iv;
-                    iv.it_value.tv_sec = 0; iv.it_value.tv_usec = 200 * 1000;
-                    iv.it_interval.tv_sec = 0; iv.it_interval.tv_usec = 0;
-                    setitimer(ITIMER_REAL, &iv, NULL);
-                    t = waitpid(-1, &st, __WALL);
-                    if (t < 0 && errno == EINTR) {
-                        idle_poll = 1;
-                        t = 0;
-                        static int ei_log = 0;
-                        if (ei_log < 3) { ei_log++;
-                            ptrace_log("[alrm] EINTR 命中 → 进轮询态（第 %d 次）", ei_log);
-                        }
-                    } else {
-                        struct itimerval zv = {{0, 0}, {0, 0}};
-                        setitimer(ITIMER_REAL, &zv, NULL);
-                    }
-                }
-            } else {
-                /* v1.2.71：setitimer 被拒路径——改用 WNOHANG 轮询（20ms），
-                 * 静默期驱动 graceful（吞吐代价只在静默期，忙时立即返回）。 */
-                t = waitpid(-1, &st, WNOHANG | __WALL);
-                if (t == 0) {
-                    struct timespec ts = {0, 20 * 1000 * 1000};
-                    nanosleep(&ts, NULL);
-                    if (tvm_graceful_check(1)) { g_t_status = 0; g_t_done = 1; break; }
-                    continue;
-                }
-            }
-            if (idle_poll) {
-                t = waitpid(-1, &st, WNOHANG | __WALL);
-                if (t == 0) {
-                    struct timespec ts = {0, 20 * 1000 * 1000};   /* 20ms */
-                    nanosleep(&ts, NULL);
-                    if (tvm_graceful_check(1)) { g_t_status = 0; g_t_done = 1; break; }
-                    continue;                     /* 轮询态：等下个停点 */
-                }
-                idle_poll = 0;                    /* 有停点：回满速 */
+                struct timespec ts = {0, 20 * 1000 * 1000};   /* 20ms */
+                nanosleep(&ts, NULL);
+                if (tvm_graceful_check(1)) { g_t_status = 0; g_t_done = 1; break; }
+                continue;                        /* 静默期：慢轮询 */
             }
         }
         if (t == 0) {
@@ -1853,7 +1801,6 @@ static void* tvm_tracer_main(void* arg) {
         /* v1.2.17 ★ 看门狗的体检代办：主线程置 g_hang_probe，tracer（本线程）
          * 在停点执行——ptrace 请求只有本线程有资格（教训五第五击）。
          * tracee 此刻睡在 futex，本次停点是 PTRACE_SYSCALL 的即时返回。 */
-have_stop:
         g_guest_ticks++;                     /* v1.2.19：任何停点都算"guest 在前进" */
         /* v1.2.68 ★ 终极取证：停点级 [beat] 心跳（每 10s 无条件）。
          * [chk] 直播揭示：stress 后 check 停跑但停点仍在——本心跳区分

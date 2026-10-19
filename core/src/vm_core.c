@@ -600,7 +600,13 @@ long vm_vfs_read(VmVfs* vfs, int fd, void* buf, size_t n) {
 
 int vm_vfs_close(VmVfs* vfs, int fd) {
     int i = fd - VM_FD_BASE;
-    if (i < 0 || i >= VM_MAX_FILES || !vfs->files[i].in_use) return -VM_EBADF;
+    /* v1.2.77 ★★★ ART init 后期 close 循环扫到虚拟号段（fd≥10000）：
+     * 不在表里的虚拟 fd 回 EBADF → guest 判"没关掉"→ 重试 → **无限循环**
+     * （真机实锤：close(10060) 重复出现，10 万次 close 占停点一半，
+     *  ART 启动拖 172s+）。语义同 v1.1.3 真 fd 修复：guest 想关的任何 fd
+     * 都"关成功了"——不在表里=本来就没人用=关了也无害。 */
+    if (i < 0 || i >= VM_MAX_FILES) return 0;           /* 越界号段：假装成功 */
+    if (!vfs->files[i].in_use) return 0;                /* 空槽：假装成功 */
     vfs->files[i].in_use = 0;
     return 0;
 }

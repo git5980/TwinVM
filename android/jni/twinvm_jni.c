@@ -1747,6 +1747,24 @@ static void* tvm_tracer_main(void* arg) {
          *         WNOHANG+20ms 轮询态（驱动 graceful 检查）；
          *   新停点一到：立即回满速阻塞态。 */
         {
+            /* v1.2.74 ★★★ 信号无关硬保障（ALRM 之谜第八版仍未破——setitimer
+             * 声明可用、抢收已修、零 EINTR）：不再单赌信号。每 30 轮循环
+             * （约 1.5s 忙时/200ms 闲时）强制一次 20ms 轮询窗口——
+             * 静默期无论信号死活，graceful 检查必被驱动。
+             * 吞吐代价：忙时每 30 次停点多睡 20ms（≈0.7% 忙时开销）。 */
+            static unsigned spin = 0;
+            if (++spin >= 30) {
+                spin = 0;
+                pid_t pt = waitpid(-1, &st, WNOHANG | __WALL);
+                if (pt == 0) {
+                    struct timespec ts = {0, 20 * 1000 * 1000};
+                    nanosleep(&ts, NULL);
+                    if (tvm_graceful_check(1)) { g_t_status = 0; g_t_done = 1; break; }
+                } else if (pt > 0) {
+                    t = pt;                     /* 轮询窗口里正好有停点：照常处理 */
+                    goto have_stop;
+                }
+            }
             static int idle_poll = 0;             /* 0=阻塞态 非0=轮询态 */
             static int alrm_ok = -1;             /* -1=未测 0=setitimer 被拒 1=可用 */
             if (alrm_ok < 0) {
@@ -1835,6 +1853,7 @@ static void* tvm_tracer_main(void* arg) {
         /* v1.2.17 ★ 看门狗的体检代办：主线程置 g_hang_probe，tracer（本线程）
          * 在停点执行——ptrace 请求只有本线程有资格（教训五第五击）。
          * tracee 此刻睡在 futex，本次停点是 PTRACE_SYSCALL 的即时返回。 */
+have_stop:
         g_guest_ticks++;                     /* v1.2.19：任何停点都算"guest 在前进" */
         /* v1.2.68 ★ 终极取证：停点级 [beat] 心跳（每 10s 无条件）。
          * [chk] 直播揭示：stress 后 check 停跑但停点仍在——本心跳区分

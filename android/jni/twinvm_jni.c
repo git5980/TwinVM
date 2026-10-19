@@ -2639,10 +2639,16 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
         }
     }
     sem_wait(&g_launch_sem);               /* fork 完成，g_t_pid 就绪 */
-    pthread_sigmask(SIG_SETMASK, &old_m, NULL);
-    {   /* v1.2.63：ALRM 定向——tracer 解除屏蔽（主线程仍屏蔽 → 定时器只打这里） */
-        sigset_t am; sigemptyset(&am); sigaddset(&am, SIGALRM);
-        pthread_sigmask(SIG_UNBLOCK, &am, NULL);
+    /* v1.2.72 ★★★ 终极真凶修复：信号投递目标=「任一未屏蔽线程」。
+     * 旧代码恢复 old_m（fork 前干净掩码）→ 主线程也 unblocked ALRM →
+     * **主线程抢收所有 SIGALRM**（空 handler 吃掉，waitpid 不被打断）
+     * → tracer 的 EINTR 永不命中（v1.2.66~71 五版真机实锤 + setitimer
+     * 「可用」却零 EINTR 的矛盾全解）。主线程必须保持 ALRM 屏蔽，
+     * 只留 tracer 一个投递目标。 */
+    {
+        sigset_t rm = old_m;
+        sigaddset(&rm, SIGALRM);            /* 恢复时强制带上 ALRM 屏蔽 */
+        pthread_sigmask(SIG_SETMASK, &rm, NULL);
     }
     pid_t pid = g_t_pid;
 

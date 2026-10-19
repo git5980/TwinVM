@@ -1757,20 +1757,30 @@ static void* tvm_tracer_main(void* arg) {
              *    几微秒即命中，吞吐满速（v1.2.73 实测 27k/s）；
              * ② 停点静默 ≥300ms：每轮睡 20ms 再探——futex 死锁期驱动
              *    graceful（静默 8s 判据），CPU 趋零。 */
+            /* v1.2.76 ★★★ 修复"永续新鲜"：停点间隔判据改为【停点速率】。
+             * v1.2.75 的 300ms 新鲜窗被 guest 慢速自检流（stress 后读自己
+             * maps，每秒几十停点）永远满足 → 慢轮询永不进 → graceful
+             * 永不查（真机实锤：watch 止于 4s、stress 后零 watch）。
+             * 新判据：最近 1s 内停点数 ≥100 才算"忙"（风暴期 39044/s
+             * 依旧满速直通）；<100/s（如 48/2s=24/s 的自检流）→ 视为
+             * 静默，进 20ms 慢轮询驱动 graceful——判据只看吞吐，与
+             * 停点间隔解耦。 */
             static long last_stop_ms = 0;
+            static unsigned spin_cnt = 0;
             struct timespec now_ts;
             clock_gettime(CLOCK_MONOTONIC, &now_ts);
             long now_ms = now_ts.tv_sec * 1000 + now_ts.tv_nsec / 1000000;
-            if (t > 0) last_stop_ms = now_ms;    /* 上一轮有停点：刷新新鲜度 */
+            if (t > 0) { last_stop_ms = now_ms; spin_cnt++; }
             t = waitpid(-1, &st, WNOHANG | __WALL);
             if (t == 0) {
-                if (now_ms - last_stop_ms < 300) {
-                    continue;                    /* 新鲜期：立即重试（停点将至） */
+                if (now_ms - last_stop_ms < 1000 && spin_cnt >= 100) {
+                    continue;                    /* 高吞吐忙期：满速自旋 */
                 }
                 struct timespec ts = {0, 20 * 1000 * 1000};   /* 20ms */
                 nanosleep(&ts, NULL);
+                spin_cnt = 0;                    /* 清零：速率窗口重启 */
                 if (tvm_graceful_check(1)) { g_t_status = 0; g_t_done = 1; break; }
-                continue;                        /* 静默期：慢轮询 */
+                continue;                        /* 低吞吐/静默：慢轮询 */
             }
         }
         if (t == 0) {

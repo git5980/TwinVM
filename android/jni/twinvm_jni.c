@@ -1823,6 +1823,13 @@ static void* tvm_tracer_main(void* arg) {
         }
         if (t < 0) {
             if (errno == EINTR) continue;
+            /* v1.2.73 ★★★ 七版悬案终章：guest 全员退出（exit_group 被 BPF
+             * 放行=原生执行=trace 不打印——48 停点是 Shutdown 舞步余晖，
+             * 之后 waitpid ECHILD）。此前 break 无声——现在大声说出来，
+             * 并广播终局（g_t_done=1 让主线程收尾）。 */
+            ptrace_log("[tracer] waitpid=%d errno=%d（%s）—— guest 已全员退出，示踪终局",
+                       (int)t, errno, errno == ECHILD ? "ECHILD" : "其他");
+            g_t_status = 0; g_t_done = 1;
             break;                                 /* ECHILD 等：收完，终局 */
         }
         /* v1.2.17 ★ 看门狗的体检代办：主线程置 g_hang_probe，tracer（本线程）
@@ -2684,7 +2691,14 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
         pf.fd = pfd[0]; pf.events = POLLIN; pf.revents = 0;
         int pr = poll(&pf, 1, 1000);
         if (pr > 0 && (pf.revents & POLLIN)) {
-            n = read(pfd[0], buf + len, cap - len);
+            /* v1.2.73 ★★★ 主线程"38s 死亡"之谜终章：read 想一次读满 8KB，
+             * 但管道里只有 guest 写的 24B（stress 输出）→ **read 阻塞等满**
+             * → poll 循环卡死在 read 里 → alive 心跳/EOF 收尾全停。
+             * （经典 poll+read 死锁：poll 只保证"有数据"，不保证"够读满"。）
+             * 修：小份读（256B）——多读几次无妨，绝不阻塞。 */
+            size_t want = 256;
+            if (want > cap - len) want = cap - len;
+            n = read(pfd[0], buf + len, want);
             if (n > 0) {
                 len += (size_t)n;
                 last_out = time(NULL);

@@ -673,6 +673,51 @@ static unsigned long long g_guest_ticks_prev_sec = 0; /* 秒采样基准 */
 static unsigned long long g_sec_now = 0;            /* 秒计数 */
 static volatile unsigned long long g_t_last_pc = 0;     /* 最近一次 syscall 停点的 pc */
 static volatile unsigned long long g_mmap_hint = 0, g_mmap_len = 0;   /* v1.2.23：匿名 mmap 的 hint */
+/* v1.2.91：低 4GB 强制落位状态（exit 侧发现未满足 → entry 侧接管） */
+static volatile int g_low4_active = 0;
+static volatile unsigned long long g_low4_want_len = 0;
+/* 在 guest 的 /proc/<pid>/maps 里找低 4GB 的空洞（≥len，对齐 1MB）。
+ * 返回 0=没找到。 */
+static unsigned long long tvm_low4_hole(pid_t pid, unsigned long long len) {
+    /* 收集低 4GB 的已映射区间，排序找间隙 */
+    enum { MAXSEG = 96 };
+    static struct Seg { unsigned long long lo, hi; } seg[MAXSEG];
+    int n = 0;
+    char path[48], ln[256];
+    snprintf(path, sizeof(path), "/proc/%d/maps", (int)pid);
+    FILE* f = fopen(path, "r");
+    if (!f) return 0;
+    while (n < MAXSEG && fgets(ln, sizeof(ln), f)) {
+        unsigned long long a, b;
+        if (sscanf(ln, "%llx-%llx", &a, &b) == 2 && b <= 0x100000000ULL) {
+            seg[n].lo = a; seg[n].hi = b; n++;
+        }
+    }
+    fclose(f);
+    /* 排序（插入即可，段数少） */
+    for (int i = 1; i < n; i++) {
+        struct Seg k = seg[i];
+        int j = i - 1;
+        while (j >= 0 && seg[j].lo > k.lo) { seg[j+1] = seg[j]; j--; }
+        seg[j+1] = k;
+    }
+    /* 逐间隙找（从高往低——靠近 4GB 的更可能是 ART 期望区） */
+    unsigned long long prev_hi = 0;
+    for (int i = 0; i <= n; i++) {
+        unsigned long long gap_lo = (i == n) ? 0 : seg[i].lo;
+        if (i > 0) {
+            unsigned long long gap_start = prev_hi;
+            unsigned long long gap_end = seg[i].lo;
+            if (gap_end > gap_start && gap_end - gap_start >= len)
+                return (gap_start + 0xFFFFFUL) & ~0xFFFFFULL;  /* 1MB 对齐 */
+        }
+        if (i < n) prev_hi = seg[i].hi;
+    }
+    /* 头部间隙（0 到第一段） */
+    if (n > 0 && seg[0].lo >= len) return 0x100000;  /* 1MB 起（避 mmap_min_addr） */
+    if (n == 0) return 0x100000;
+    return 0;
+}
 static volatile int g_mmap_pend = 0;
 /* v1.2.25：循环/卡死现场的抓帧请求（看门狗或 [loop] 检测器置位） */
 /* v1.2.31 ★★★ **futex 调用环形留痕**。
@@ -2142,6 +2187,34 @@ static void* tvm_tracer_main(void* arg) {
                         g_mmap_hint = (unsigned long long)info.u.entry.args[0];
                         g_mmap_len  = (unsigned long long)info.u.entry.args[1];
                         g_mmap_pend = 1;
+                        /* v1.2.91 ★★★ 低 4GB 强制落位（entry 侧接管）：
+                         * 上一次 mmap 的低 4GB hint 未被内核满足（exit 侧置
+                         * g_low4_active）——本轮 mmap 无论带不带 hint，
+                         * 只要目标尺寸匹配，就在 guest 低 4GB 找空洞，
+                         * 改写 x0=空洞地址、x3 |= MAP_FIXED(0x10) 放行。 */
+                        if (g_low4_active && g_mmap_len == g_low4_want_len) {
+                            g_low4_active = 0;
+                            unsigned long long hole = tvm_low4_hole(t, g_mmap_len);
+                            if (hole) {
+                                struct tvm_arm_regs lr4;
+                                if (tvm_getregs(t, &lr4) == 0) {
+                                    lr4.regs[0] = hole;
+                                    lr4.regs[3] = lr4.regs[3] | 0x10;  /* MAP_FIXED */
+                                    tvm_setregs(t, &lr4);
+                                    g_mmap_hint = hole;   /* exit 观测对齐 */
+                                    static int s_low4fix = 0;
+                                    if (s_low4fix++ < 12)
+                                        ptrace_log("[low4-fix] #%d 强制落位 0x%llx len=0x%llx（MAP_FIXED）",
+                                                   s_low4fix, hole, g_mmap_len);
+                                }
+                            } else {
+                                static int s_no_hole = 0;
+                                if (s_no_hole++ < 4)
+                                    ptrace_log("[low4-fix] !! 低4GB 无 %lluB 空洞——放弃接管",
+                                               g_low4_want_len);
+                                g_low4_active = 1;   /* 下轮再试 */
+                            }
+                        }
                     }
                     /* v1.0.5：**只记录被拦截的 syscall** —— 否则 ART 的 GC 循环
                      * （mmap/munmap/msync 各 8 万+ 次）会把日志刷到几十 MB。
@@ -2242,6 +2315,27 @@ static void* tvm_tracer_main(void* arg) {
                                        ((long long)mr.regs[0] > 0 &&
                                         (unsigned long long)mr.regs[0] != g_mmap_hint)
                                        ? "  ← 未按 hint" : "");
+                        }
+                        /* v1.2.91 ★★★ 低 4GB 强制落位（v1.2.20/21 老案重现终结）：
+                         * ART 的 MapInternalArtLow4GBAllocator 要求低 4GB（压缩
+                         * 指针）。内核"未按 hint"给高地址时（低 4GB 碎片化），
+                         * ART 会用 msync 逐页扫描区间可用性 → 全 ENOMEM →
+                         * 死循环（v1.2.90 真机实锤：196/s 的 msync 扫描 90s）。
+                         * 修（无需注入）：guest 下一次 mmap(低4GB hint) 的
+                         * 【entry 停点】处，由 tracer 用 /proc/<pid>/maps 在
+                         * 低 4GB 找一块够大的空洞，改写 x0(地址)+x3(加
+                         * MAP_FIXED) 后放行——内核原生成像，guest 拿到精确
+                         * 落点。本次 exit 只留观测（改参在 entry 做）。 */
+                        if (low4
+                            && (long long)mr.regs[0] > 0
+                            && (unsigned long long)mr.regs[0] != g_mmap_hint) {
+                            g_low4_want_len = g_mmap_len;
+                            g_low4_active = 1;   /* 提示 entry 侧下一轮接管 */
+                            static int s_low4miss = 0;
+                            if (s_low4miss++ < 8)
+                                ptrace_log("[low4] hint=0x%llx len=0x%llx 未满足（内核给 0x%llx）——下一轮 mmap entry 强制落位",
+                                           g_mmap_hint, g_mmap_len,
+                                           (unsigned long long)mr.regs[0]);
                         }
                     }
                 }

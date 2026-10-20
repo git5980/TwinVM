@@ -2038,6 +2038,13 @@ static void* tvm_tracer_main(void* arg) {
                         struct tvm_arm_regs ir;
                         if (tvm_getregs(t, &ir) == 0
                             && ir.regs[0] >= 3 && ir.regs[0] < 10000) {
+                            /* v1.2.81 ★ UFFDIO 直通结果观测（exit 读 x0）：
+                             * req=0xc018aa3f UFFDIO_API / 0xc020aa04 REGISTER——
+                             * ART16 的 uffd heap 靠它。失败→MMAP_TRYLOCK 提示→
+                             * 降级重建循环（v1.2.80 真机定罪）。记 req 供 exit 配对。 */
+                            static unsigned long long s_uffd_req = 0;
+                            if (ir.regs[1] == 0xc018aa3fULL || ir.regs[1] == 0xc020aa04ULL)
+                                s_uffd_req = ir.regs[1];
                             static int s_ictl = 0;
                             if (s_ictl++ < 12)
                                 ptrace_log("[ioctl] fd=%llu 真直通（req=0x%llx，t=%d）",
@@ -2182,6 +2189,16 @@ static void* tvm_tracer_main(void* arg) {
                             for (int z = 0; z < g_nfail && z < 64; z++) {
                                 if (g_fail[z].nr == enr) {
                                     g_fail[z].err = eerr;
+                                    /* v1.2.81 ★ mmap EINVAL 深挖：64 位 fd 形态直播
+                                     * （32 位 -1 截断嫌疑：0xffffffff vs 0xffff...ff）。 */
+                                    if (enr == 222 && (eerr == 22 || eerr == -22)) {
+                                        static int s_mmei = 0;
+                                        if (s_mmei < 8) { s_mmei++;
+                                            ptrace_log("[mmap-einval] #%d addr=0x%llx len=0x%llx prot=0x%llx flags=0x%llx fd=0x%llx off=0x%llx",
+                                                       s_mmei,
+                                                       g_wargs[0], g_wargs[1], g_wargs[2], g_wargs[3], g_wargs[4], g_wargs[5]);
+                                        }
+                                    }
                                     if (g_fail[z].cnt++ < 6)
                                         ptrace_log("[fail] nr=%ld → -%ld（第 %d 次） "
                                                    "args=0x%llx,0x%llx,0x%llx,0x%llx,0x%llx,0x%llx",

@@ -2046,12 +2046,17 @@ static void* tvm_tracer_main(void* arg) {
                      * （v1.2.85 反汇编定证 0xfcd74: blr x23）。x23 在
                      * mprotect 的现场（callee-saved）仍保留！打印它+lr。 */
                     if (info.u.entry.nr == 226
-                        && (long)info.u.entry.args[2] == 3) {   /* 只抓 RW 方向 */
+                        && (long)info.u.entry.args[2] == 3       /* RW 方向 */
+                        && (unsigned long long)info.u.entry.args[0] == 0x78d3ab8000ULL) {
+                        /* v1.2.88 ★ 修正：v1.2.87 的 6 条额度全被启动期正常
+                         * mprotect 吃掉（帧链全是装载段保护）——循环特征地址
+                         * 过滤：v1.2.86 探针实锤循环只翻 0x78d3ab8000 这页
+                         * （libart ELF 头/RELRO 页）。只抓它。 */
                         /* v1.2.87 ★ 定罪：循环=linker __cxa_atexit 对 libart
                          * RELRO 头页 R↔RW 反复翻转（9ffac/9fff0 两调用点）。
                          * 上层有人在循环调 cxa_atexit——抓调用者 x29 帧链。 */
                         static int s_atx = 0;
-                        if (s_atx < 6) {
+                        if (s_atx < 12) {
                             s_atx++;
                             struct tvm_arm_regs pr;
                             if (tvm_getregs(t, &pr) == 0) {

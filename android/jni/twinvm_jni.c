@@ -1219,7 +1219,18 @@ static void tvm_dump_frames(pid_t t, long nr, struct tvm_arm_regs* r) {
                 sg[n].lo = lo; sg[n].hi = hi;
                 sg[n].exec = (pm[2] == 'x');
                 if (nm[0]) { sg[n].named = 1; sg[n].base = lo - fo; strncpy(sg[n].name, nm, 55); }
-                else { sg[n].named = 0; sg[n].base = lo; sg[n].name[0] = 0; }
+                else {
+                    /* v1.2.80 ★ segnote 覆盖：map-fill 灌的段（guest 匿名 mmap
+                     * + 父进程 process_vm_writev 灌库内容）在 maps 里是 [anon]——
+                     * 但父进程有 fd→路径登记（tvm_segnote_add）。命中即补名，
+                     * 帧回溯从此能说'liblog.so+0x1234'而不是'[anon] +0x…'。 */
+                    unsigned long long s_off = 0;
+                    const char* sn = tvm_segnote_find(lo, &s_off);
+                    if (sn && s_off == 0) {         /* 段起点命中：整段补名 */
+                        sg[n].named = 1; sg[n].base = lo;
+                        strncpy(sg[n].name, sn, 55);
+                    } else { sg[n].named = 0; sg[n].base = lo; sg[n].name[0] = 0; }
+                }
                 n++;
             }
         }

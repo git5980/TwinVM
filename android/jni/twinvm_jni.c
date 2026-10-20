@@ -45,6 +45,16 @@
 #ifndef VM_EXIT_GRACE_S
 #define VM_EXIT_GRACE_S 8
 #endif
+#ifndef VM_EXIT_GRACE2_S
+/* v1.2.78 ★ 分级判据之慢速兜底：健康慢速活动（如 ART 信号准备 47/s）
+ * 不再被"N*20<峰*8"的峰值下限误杀（v1.2.77 真机实锤：375 停点被杀，
+ * 现场 sigaction/getrlimit/sigprocmask——ART init 正常阶段）。 */
+#define VM_EXIT_GRACE2_S 90
+#endif
+#ifndef VM_EXIT_MIN_ALIVE
+/* 分级判据之"活着"线：静默窗口内 ≥8 停点/s = guest 明显在干活，不杀 */
+#define VM_EXIT_MIN_ALIVE 64
+#endif
 #ifndef VM_HANG_TOTAL_S
 #define VM_HANG_TOTAL_S  240   /* v0.7.60：同步放宽总时长（原 120s） */
 #endif
@@ -970,10 +980,11 @@ static int tvm_graceful_check(int kill_it) {
         char wb[288];
         int wk = snprintf(wb, sizeof(wb),
             "[TwinVM] [t-watch] 距真实输出 %lds、窗口停点 %llu、"
-            "峰值 %llu/s（触发需：静默≥%ds 且 N*20<峰*%d）\n",
+            "峰值 %llu/s（分级判据：≥%d停点/s不杀；静默≥%ds且<%d停点=死锁；静默≥%ds兜底）\n",
             (long)(tnow - g_last_real_out),
             g_guest_ticks - g_ticks_at_real_out, t_peak,
-            VM_EXIT_GRACE_S, VM_EXIT_GRACE_S);
+            VM_EXIT_MIN_ALIVE / VM_EXIT_GRACE_S,
+            VM_EXIT_GRACE_S, VM_EXIT_MIN_ALIVE, VM_EXIT_GRACE2_S);
         live_write(wb, (size_t)wk);
     }
     if (t_rate_sec == 0) t_rate_sec = tnow;
@@ -985,9 +996,17 @@ static int tvm_graceful_check(int kill_it) {
     }
     unsigned long long peak_eff = t_peak > 1000 ? t_peak : 1000;
     if (t_grace_done || g_last_real_out <= 0) return 0;
-    if (tnow - g_last_real_out < VM_EXIT_GRACE_S) return 0;
-    if ((g_guest_ticks - g_ticks_at_real_out) * 20
-            >= peak_eff * (unsigned long long)VM_EXIT_GRACE_S) return 0;
+    /* v1.2.78 ★★★ 分级判据（替代"N*20<峰*8"的峰值公式——其 1000 下限
+     * 会把健康慢速（47/s=4.7%）误判为"骤降"——v1.2.77 真机实锤：ART 信号
+     * 准备阶段 N=375 被杀，黑盒现场 sigaction/getrlimit/sigprocmask）。
+     *   ① 静默 ≥VM_EXIT_GRACE2_S(90s)：兜底——慢速打转永不前进也该收尸；
+     *   ② 静默 ≥VM_EXIT_GRACE_S(8s) 且窗口停点 <VM_EXIT_MIN_ALIVE(64)
+     *      = 平均 <8 停点/s：真死锁（futex 死等/退出死等）；
+     *   ③ 其余（≥8 停点/s 的慢速健康活动）：不杀，继续观察。 */
+    long sil = (long)(tnow - g_last_real_out);
+    unsigned long long Nwin = g_guest_ticks - g_ticks_at_real_out;
+    if (sil < VM_EXIT_GRACE2_S && !(sil >= VM_EXIT_GRACE_S && Nwin < VM_EXIT_MIN_ALIVE))
+        return 0;
     t_grace_done = tnow;
     char gb[384];
     int gk = snprintf(gb, sizeof(gb),
@@ -2751,10 +2770,11 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
                     char wb[256];
                     int wk = snprintf(wb, sizeof(wb),
                         "[TwinVM] [graceful-watch] 距真实输出 %lds、窗口停点 %llu、"
-                        "峰值 %llu/s（判据：静默≥%ds 且 N*20<峰值*%d）\n",
+                        "峰值 %llu/s（分级判据：≥%d停点/s不杀；静默≥%ds且<%d停点=死锁；静默≥%ds兜底）\n",
                         (long)(now - g_last_real_out),
                         g_guest_ticks - g_ticks_at_real_out, peak_eff,
-                        VM_EXIT_GRACE_S, VM_EXIT_GRACE_S);
+                        VM_EXIT_MIN_ALIVE / VM_EXIT_GRACE_S,
+                        VM_EXIT_GRACE_S, VM_EXIT_MIN_ALIVE, VM_EXIT_GRACE2_S);
                     live_write(wb, (size_t)wk);
                 }
             }
@@ -2764,9 +2784,15 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
              * 文件（管道在 ART 时代恒干涸，len 恒 0）。本地模拟实锤：去掉
              * 此门后收尾打转场景 t=13s 触发、真干活 5000/s 场景不误杀。
              * g_last_real_out > 0 已蕴含"出过真实输出"。 */
-            if (!grace_killed
-                && g_last_real_out > 0 && now - g_last_real_out >= VM_EXIT_GRACE_S
-                && (g_guest_ticks - g_ticks_at_real_out) * 20 < peak_eff * (unsigned long long)VM_EXIT_GRACE_S) {
+            /* v1.2.78 ★★★ 主线程侧同步分级（与 tracer 侧 tvm_graceful_check
+             * 同判据：≥8 停点/s 的健康慢速不杀；<8/s 且静默 8s=死锁快收；
+             * 静默 90s 兜底。v1.2.77 真机误杀教训：峰值下限 1000 会让 47/s
+             * 的 ART 信号准备（4.7%）踩线被杀。） */
+            long m_sil = (long)(now - g_last_real_out);
+            unsigned long long m_n = g_guest_ticks - g_ticks_at_real_out;
+            int m_dead = (m_sil >= VM_EXIT_GRACE2_S)
+                       || (m_sil >= VM_EXIT_GRACE_S && m_n < VM_EXIT_MIN_ALIVE);
+            if (!grace_killed && g_last_real_out > 0 && m_dead) {
                 grace_killed = now;
                 int gst = 0; (void)gst;
                 char gb[384];

@@ -1330,19 +1330,28 @@ long vm_handle_syscall(VmCpu* c, long nr, long a0, long a1, long a2, long a3, lo
         }
         return total;
     }
-    case 43: { /* statfs ★ v1.2.85 全面审查补漏：拦截名单里的 43 一直走
-                 * default ENOSYS（v0.x 遗留）。ART 会 statfs('/') 看空间——
-                 * 回一个温和的假统计（4K 块、256MB 总量、128MB 可用）。 */
+    case 43: { /* statfs ★ v1.2.85 补漏 / v1.2.90 修越界：
+                 * v1.2.85 用了 long fsid[2]（16B），bionic 是 int fsid[2]（8B）
+                 * → 假结构体 128B > guest 栈上真实缓冲 120B → 越界写 8 字节
+                 * 踩 libc 金丝雀 → "stack corruption detected" abort
+                 * （v1.2.89 真机实锤：statfs×2 后紧跟 abort）。
+                 * 现按 bionic struct statfs 精确布局：120 字节。 */
         if (a1) {
             struct { long type; long bsize; long blocks, bfree, bavail;
-                     long files, ffree; long fsid[2]; long namelen;
+                     long files, ffree; int fsid[2]; long namelen;
                      long frsize; long flags; long spare[4]; } st = {0};
             st.type = 0x010019 /* EXT4_SUPER_MAGIC */;
             st.bsize = 4096; st.frsize = 4096;
             st.blocks = 1 << 16; st.bfree = 1 << 15; st.bavail = 1 << 15;
             st.files = 1 << 14; st.ffree = 1 << 13; st.namelen = 255;
-            if (vm_mem_write(&c->mem, (uintptr_t)a1, &st, sizeof(st)) != 0)
+            if (sizeof(st) != 120) {
+                /* 编译期布局与 bionic 不符则宁可不写（防再踩） */
+                static int s_stfs_bad = 0;
+                if (!s_stfs_bad) { s_stfs_bad = 1;
+                    vm_log("!! statfs 假结构体 %zuB != 120B，跳过写入", sizeof(st)); }
+            } else if (vm_mem_write(&c->mem, (uintptr_t)a1, &st, sizeof(st)) != 0) {
                 return -14;   /* EFAULT */
+            }
         }
         return 0;
     }

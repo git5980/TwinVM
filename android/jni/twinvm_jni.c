@@ -2215,6 +2215,17 @@ static void* tvm_tracer_main(void* arg) {
                             if (g_nfail < 64) {
                                 int z = g_nfail++;
                                 g_fail[z].nr = enr; g_fail[z].err = eerr; g_fail[z].cnt = 1;
+                                /* v1.2.82 ★ mmap EINVAL 直播（首次路径——v1.2.81
+                                 * 只插在老条目命中路径，真机实锤首次走这里没经过） */
+                                if (enr == 222 && (eerr == 22 || eerr == -22)) {
+                                    ptrace_log("[mmap-einval] addr=0x%llx len=0x%llx prot=0x%llx flags=0x%llx fd=0x%llx off=0x%llx",
+                                               g_wargs_nr == enr ? g_wargs[0] : 0ULL,
+                                               g_wargs_nr == enr ? g_wargs[1] : 0ULL,
+                                               g_wargs_nr == enr ? g_wargs[2] : 0ULL,
+                                               g_wargs_nr == enr ? g_wargs[3] : 0ULL,
+                                               g_wargs_nr == enr ? g_wargs[4] : 0ULL,
+                                               g_wargs_nr == enr ? g_wargs[5] : 0ULL);
+                                }
                                 ptrace_log("[fail] nr=%ld → -%ld（首次） "
                                            "args=0x%llx,0x%llx,0x%llx,0x%llx,0x%llx,0x%llx",
                                            enr, eerr,

@@ -1791,14 +1791,16 @@ static void* tvm_tracer_main(void* arg) {
              *    几微秒即命中，吞吐满速（v1.2.73 实测 27k/s）；
              * ② 停点静默 ≥300ms：每轮睡 20ms 再探——futex 死锁期驱动
              *    graceful（静默 8s 判据），CPU 趋零。 */
-            /* v1.2.76 ★★★ 修复"永续新鲜"：停点间隔判据改为【停点速率】。
-             * v1.2.75 的 300ms 新鲜窗被 guest 慢速自检流（stress 后读自己
-             * maps，每秒几十停点）永远满足 → 慢轮询永不进 → graceful
-             * 永不查（真机实锤：watch 止于 4s、stress 后零 watch）。
-             * 新判据：最近 1s 内停点数 ≥100 才算"忙"（风暴期 39044/s
-             * 依旧满速直通）；<100/s（如 48/2s=24/s 的自检流）→ 视为
-             * 静默，进 20ms 慢轮询驱动 graceful——判据只看吞吐，与
-             * 停点间隔解耦。 */
+            /* v1.2.89 ★★★ 终解（v1.2.76 判据的自杀性副作用）：
+             * v1.2.76 把"忙"定为 ≥100 停点/s，其余 20ms 慢轮询——本意
+             * 是抓 futex 死锁。但 ART 构造期（libart 298 构造/heap 逐页
+             * 初始化）的真实停点速率只有 ~50/s（大量纯用户态计算）：
+             * 每个停点被 20ms 轮询节流 → mprotect 间隔恰 40ms（=2×20ms
+             * 停点延迟）→ 启动被拖慢 4~10 倍 → 90s 兜底误杀。
+             * 修复：忙阈值 100→32（50/s 的 ART 构造恢复满速；futex
+             * 死锁 0/s 依旧走慢轮询）；慢轮询 20ms→5ms（兜底灵敏度×4）。
+             * 自洽性检查：真死锁（0 停点）8s 判据不受影响；风暴期
+             * 39044/s 依旧满速；graceful 三级判据原样保留。 */
             static long last_stop_ms = 0;
             static unsigned spin_cnt = 0;
             struct timespec now_ts;
@@ -1807,14 +1809,14 @@ static void* tvm_tracer_main(void* arg) {
             if (t > 0) { last_stop_ms = now_ms; spin_cnt++; }
             t = waitpid(-1, &st, WNOHANG | __WALL);
             if (t == 0) {
-                if (now_ms - last_stop_ms < 1000 && spin_cnt >= 100) {
-                    continue;                    /* 高吞吐忙期：满速自旋 */
+                if (now_ms - last_stop_ms < 1000 && spin_cnt >= 32) {
+                    continue;                    /* 忙期（≥32停点/s）：满速自旋 */
                 }
-                struct timespec ts = {0, 20 * 1000 * 1000};   /* 20ms */
+                struct timespec ts = {0, 5 * 1000 * 1000};    /* 5ms */
                 nanosleep(&ts, NULL);
                 spin_cnt = 0;                    /* 清零：速率窗口重启 */
                 if (tvm_graceful_check(1)) { g_t_status = 0; g_t_done = 1; break; }
-                continue;                        /* 低吞吐/静默：慢轮询 */
+                continue;                        /* 真静默：5ms 慢轮询 */
             }
         }
         if (t == 0) {

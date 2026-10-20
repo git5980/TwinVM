@@ -1330,6 +1330,12 @@ long vm_handle_syscall(VmCpu* c, long nr, long a0, long a1, long a2, long a3, lo
         }
         return total;
     }
+    case 282: /* userfaultfd ★ v1.2.84：恒拒（EPERM）——guest 的 uffd-heap
+                 * 在 VM 里没有事件 handler，只会让构造函数陷入 mprotect
+                 * 死循环（v1.2.80~83 四版真机定罪）。拒掉后 ART 自动走
+                 * 无 uffd 的普通 heap 路径。（AArch64 nr=282，不是 x86 的 129；
+                 * 129 是 kill——差点撞号，教训九续） */
+        return -1;   /* EPERM */
     case VM_NR_close: {
         /* v1.1.7：guest 显式关掉的 stdio 记账——/dev/null 的 POSIX 最低 fd
          * 复用要用（debuggerd 伪线程 close(0..1023) 后 open("/dev/null")

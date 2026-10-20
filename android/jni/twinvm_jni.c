@@ -786,7 +786,11 @@ static int tvm_virt_nr(long nr) {
         case 160: case 17:
         case 49: case 48: case 29: case 61: case 25:
         case 96: case 99: case 163: case 167: case 43: case 44: case 221:
-            /* ★★★ 本行 `return 1;` 必须保留！
+        case 129: /* v1.2.84 ★ userfaultfd：guest 拿到真 uffd 后 ART 的
+                    uffd-heap 模式在 VM 里无 handler → 构造函数 mprotect
+                    死循环（v1.2.80~83 四版定罪：call_constructors 内循环）。
+                    拦下回 EPERM → ART 降级普通 heap（无 uffd 路径），
+                    引擎里 userfaultfd 已有 EPERM 语义。 */            /* ★★★ 本行 `return 1;` 必须保留！
              * v1.2.23 曾因删除 `case 227:` 时把它一并删掉，
              * 导致 `tvm_virt_nr()` **永远返回 0 → syscall 拦截被整体关闭**
              *（连锁现象：tvm_intercept_now 被判"未使用"而删除、构建产物里

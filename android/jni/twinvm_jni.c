@@ -2045,19 +2045,30 @@ static void* tvm_tracer_main(void* arg) {
                      * call_constructors 的循环寄存器 x23=当前构造函数指针
                      * （v1.2.85 反汇编定证 0xfcd74: blr x23）。x23 在
                      * mprotect 的现场（callee-saved）仍保留！打印它+lr。 */
-                    if (info.u.entry.nr == 226) {
-                        static int s_mp_probe = 0;
-                        if (s_mp_probe < 20) {
-                            s_mp_probe++;
+                    if (info.u.entry.nr == 226
+                        && (long)info.u.entry.args[2] == 3) {   /* 只抓 RW 方向 */
+                        /* v1.2.87 ★ 定罪：循环=linker __cxa_atexit 对 libart
+                         * RELRO 头页 R↔RW 反复翻转（9ffac/9fff0 两调用点）。
+                         * 上层有人在循环调 cxa_atexit——抓调用者 x29 帧链。 */
+                        static int s_atx = 0;
+                        if (s_atx < 6) {
+                            s_atx++;
                             struct tvm_arm_regs pr;
                             if (tvm_getregs(t, &pr) == 0) {
-                                ptrace_log("[ctor-probe] #%d mprotect(0x%llx,%llx,prot=%d) x23=0x%llx lr=0x%llx",
-                                           s_mp_probe,
-                                           (unsigned long long)info.u.entry.args[0],
-                                           (unsigned long long)info.u.entry.args[1],
-                                           (long)info.u.entry.args[2],
-                                           (unsigned long long)pr.regs[23],
-                                           (unsigned long long)pr.regs[30]);
+                                unsigned long long fp = pr.regs[29];
+                                char out[512];
+                                int o = snprintf(out, sizeof(out),
+                                    "[atexit-probe] #%d mprotect(0x%llx,RW) 帧链：",
+                                    s_atx, (unsigned long long)info.u.entry.args[0]);
+                                for (int fi = 0; fi < 5 && o < 400; fi++) {
+                                    unsigned long long pair[2];
+                                    if (tvm_read_tracee(t, (long)fp, 16, (char*)pair) != 16) break;
+                                    o += snprintf(out+o, sizeof(out)-o, " ra=0x%llx", pair[1]);
+                                    if (pair[0] < 0x1000) break;
+                                    fp = pair[0];
+                                }
+                                snprintf(out+o, sizeof(out)-o, "\n");
+                                ptrace_log("%s", out);
                             }
                         }
                     }

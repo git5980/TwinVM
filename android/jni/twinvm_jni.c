@@ -675,6 +675,7 @@ static volatile unsigned long long g_t_last_pc = 0;     /* 最近一次 syscall 
 static volatile unsigned long long g_mmap_hint = 0, g_mmap_len = 0;   /* v1.2.23：匿名 mmap 的 hint */
 /* v1.2.91：低 4GB 强制落位状态（exit 侧发现未满足 → entry 侧接管） */
 static volatile int g_low4_active = 0;
+static volatile int g_low4_rewound = 0;   /* v1.2.92：rewind 重执行标志 */
 static volatile unsigned long long g_low4_want_len = 0;
 /* 在 guest 的 /proc/<pid>/maps 里找低 4GB 的空洞（≥len，对齐 1MB）。
  * 返回 0=没找到。 */
@@ -2328,14 +2329,49 @@ static void* tvm_tracer_main(void* arg) {
                          * 落点。本次 exit 只留观测（改参在 entry 做）。 */
                         if (low4
                             && (long long)mr.regs[0] > 0
-                            && (unsigned long long)mr.regs[0] != g_mmap_hint) {
-                            g_low4_want_len = g_mmap_len;
-                            g_low4_active = 1;   /* 提示 entry 侧下一轮接管 */
-                            static int s_low4miss = 0;
-                            if (s_low4miss++ < 8)
-                                ptrace_log("[low4] hint=0x%llx len=0x%llx 未满足（内核给 0x%llx）——下一轮 mmap entry 强制落位",
-                                           g_mmap_hint, g_mmap_len,
-                                           (unsigned long long)mr.regs[0]);
+                            && (unsigned long long)mr.regs[0] != g_mmap_hint
+                            && g_mmap_len >= 0x1000ULL) {
+                            /* v1.2.92 ★★★ rewind 重执行（v1.2.91 的等下轮
+                             * 失败实锤：ART 拿高地址后转 msync 扫描，同尺寸
+                             * mmap 永不再来——接管窗口就此错过）。
+                             * 现场直接补救：找空洞 → PC 回拨到 svc 指令前 →
+                             * 改写 x0=空洞/x3|=MAP_FIXED → 让 guest 把同一
+                             * 条 mmap 再执行一遍（内核 FIXED 精确落位）。
+                             * 高地址结果先 munmap 退还（由 guest 重执行时
+                             * FIXED 覆盖同尺寸？不——旧结果在高地址，FIXED
+                             * 落在新空洞，旧的会泄漏：先让重执行前 munmap
+                             * ——不能注入就【接受】这次泄漏（ART 退出时全
+                             * 释放；8MB×几次可忽略）——先跑通再说）。 */
+                            unsigned long long hole = tvm_low4_hole(t, g_mmap_len);
+                            if (hole && hole < 0x100000000ULL) {
+                                /* PC 回拨：svc #0 是 4 字节指令，exit 停点
+                                 * 的 pc 已越过它——回拨 4。 */
+                                unsigned long long spc = (unsigned long long)
+                                    info.instruction_pointer;
+                                mr.regs[0] = hole;
+                                mr.regs[3] = mr.regs[3] | 0x10;  /* MAP_FIXED */
+                                /* 用 tvm_arm_regs 复刻的 pc 字段（结构里
+                                 * 命名 pc）——直接写 regs[32]？我们的
+                                 * tvm_arm_regs 有独立 pc 字段。 */
+                                mr.pc = spc - 4;
+                                tvm_setregs(t, &mr);
+                                g_mmap_hint = hole;
+                                static int s_rw = 0;
+                                if (s_rw++ < 12)
+                                    ptrace_log("[low4-rewind] #%d len=0x%llx → rewind+FIXED 至 0x%llx",
+                                               s_rw, g_mmap_len, hole);
+                                g_low4_rewound = 1;
+                                /* 注意：本函数继续走会把 x0 覆盖成观测值——
+                                 * 必须立刻跳过后续 x0 写回。做法：rewind 后
+                                 * 直接 PTRACE_SYSCALL 放行并 continue。 */
+                                ptrace(PTRACE_SYSCALL, t, 0, 0);
+                                continue;
+                            } else {
+                                static int s_no_hole = 0;
+                                if (s_no_hole++ < 4)
+                                    ptrace_log("[low4] !! 低4GB 无 %lluB 空洞——放弃",
+                                               g_mmap_len);
+                            }
                         }
                     }
                 }

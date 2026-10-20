@@ -2266,6 +2266,17 @@ static void* tvm_tracer_main(void* arg) {
                             long res = cpu ? vm_handle_syscall(cpu, (long)pending,
                                         (long)sv[0], (long)sv[1], (long)sv[2],
                                         (long)sv[3], (long)sv[4], (long)sv[5]) : -38;
+                            /* v1.2.79 ★★★ mprotect 返回值直播（限 12 条）：
+                             * v1.2.78 真机 nr-hist 99% nr=226 同点循环（0x78d172a000
+                             * 页 3↔1 交替=liblog RELRO 收尾）——循环条件必依赖
+                             * mprotect 返回值。这里把 (addr,len,prot)→res 全打出来。 */
+                            if (pending == 226) {
+                                static int s_mp = 0;
+                                if (s_mp < 12) { s_mp++;
+                                    ptrace_log("[mprotect] #%d (0x%llx,0x%llx,prot=%d) → x0=%ld",
+                                               s_mp, sv[0], sv[1], (long)sv[2], res);
+                                }
+                            }
                             rr.regs[0] = (unsigned long long)res;
                             tvm_setregs(t, &rr);
                             /* v1.0.8：回填留痕（限流，每 200 次记一条），

@@ -2038,6 +2038,29 @@ static void* tvm_tracer_main(void* arg) {
                      *      → 无遗言 abort
                      * 修：entry 停点见 ioctl 且 fd∈[3,10000) → 不改写、原生执行
                      * （子进程内核对真 uffd 握手，成功写回 guest 内存）。 */
+                    /* v1.2.86 ★★★ mprotect 调用者直击：循环期 99% nr=226，
+                     * 帧 #00 ra=linker64 call_constructors+0x22c（blr x23 的
+                     * 返回点）——真凶是 298 个 init_array 构造函数之一。
+                     * 这里在 mprotect entry 抓【构造函数地址】：
+                     * call_constructors 的循环寄存器 x23=当前构造函数指针
+                     * （v1.2.85 反汇编定证 0xfcd74: blr x23）。x23 在
+                     * mprotect 的现场（callee-saved）仍保留！打印它+lr。 */
+                    if (info.u.entry.nr == 226) {
+                        static int s_mp_probe = 0;
+                        if (s_mp_probe < 20) {
+                            s_mp_probe++;
+                            struct tvm_arm_regs pr;
+                            if (tvm_getregs(t, &pr) == 0) {
+                                ptrace_log("[ctor-probe] #%d mprotect(0x%llx,%llx,prot=%d) x23=0x%llx lr=0x%llx",
+                                           s_mp_probe,
+                                           (unsigned long long)info.u.entry.args[0],
+                                           (unsigned long long)info.u.entry.args[1],
+                                           (long)info.u.entry.args[2],
+                                           (unsigned long long)pr.regs[23],
+                                           (unsigned long long)pr.regs[30]);
+                            }
+                        }
+                    }
                     /* v1.2.83 ★★★ mmap fd 截断修复（EINVAL 终结）：
                      * v1.2.82 真机铁证：fd=0x00000000ffffffff（AArch64 w4 写 -1
                      * 零扩展）→ 内核把 4294967295 当合法 fd 号检查 → EINVAL →

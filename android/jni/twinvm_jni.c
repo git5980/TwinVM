@@ -786,7 +786,7 @@ static int tvm_virt_nr(long nr) {
         case 160: case 17:
         case 49: case 48: case 29: case 61: case 25:
         case 96: case 99: case 163: case 167: case 43: case 44: case 221:
-        case 129: /* v1.2.84 ★ userfaultfd：guest 拿到真 uffd 后 ART 的
+        case 282: /* v1.2.84 ★ userfaultfd：guest 拿到真 uffd 后 ART 的
                     uffd-heap 模式在 VM 里无 handler → 构造函数 mprotect
                     死循环（v1.2.80~83 四版定罪：call_constructors 内循环）。
                     拦下回 EPERM → ART 降级普通 heap（无 uffd 路径），

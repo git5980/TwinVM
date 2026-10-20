@@ -1330,6 +1330,33 @@ long vm_handle_syscall(VmCpu* c, long nr, long a0, long a1, long a2, long a3, lo
         }
         return total;
     }
+    case 43: { /* statfs ★ v1.2.85 全面审查补漏：拦截名单里的 43 一直走
+                 * default ENOSYS（v0.x 遗留）。ART 会 statfs('/') 看空间——
+                 * 回一个温和的假统计（4K 块、256MB 总量、128MB 可用）。 */
+        if (a1) {
+            struct { long type; long bsize; long blocks, bfree, bavail;
+                     long files, ffree; long fsid[2]; long namelen;
+                     long frsize; long flags; long spare[4]; } st = {0};
+            st.type = 0x010019 /* EXT4_SUPER_MAGIC */;
+            st.bsize = 4096; st.frsize = 4096;
+            st.blocks = 1 << 16; st.bfree = 1 << 15; st.bavail = 1 << 15;
+            st.files = 1 << 14; st.ffree = 1 << 13; st.namelen = 255;
+            if (vm_mem_write(&c->mem, (uintptr_t)a1, &st, sizeof(st)) != 0)
+                return -14;   /* EFAULT */
+        }
+        return 0;
+    }
+    case 49: return 0;        /* chdir：假成功（vfs cwd 恒 /）★ v1.2.85 */
+    case 221: { /* execve ★ v1.2.85 全面审查：拦截名单里的 221 历史上走
+                 * default ENOSYS——现在显式声明：VM 内不允许 execve（我们的
+                 * exec_dyn 直载就是它的替代品）。留痕一次防困惑。 */
+        static int s_exec = 0;
+        if (!s_exec) { s_exec = 1;
+            vm_log("!! execve(221) 被 VM 拒绝（ENOSYS）——guest 试图 exec 新程序；"
+                   "VM 语义：只能 exec_dyn 直载"); }
+        return -VM_ENOSYS;
+    }
+    case 89: return -1;       /* acct：EPERM（内核标准拒绝）★ v1.2.85 */
     case 282: /* userfaultfd ★ v1.2.84：恒拒（EPERM）——guest 的 uffd-heap
                  * 在 VM 里没有事件 handler，只会让构造函数陷入 mprotect
                  * 死循环（v1.2.80~83 四版真机定罪）。拒掉后 ART 自动走

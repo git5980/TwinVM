@@ -2034,6 +2034,27 @@ static void* tvm_tracer_main(void* arg) {
                      *      → 无遗言 abort
                      * 修：entry 停点见 ioctl 且 fd∈[3,10000) → 不改写、原生执行
                      * （子进程内核对真 uffd 握手，成功写回 guest 内存）。 */
+                    /* v1.2.83 ★★★ mmap fd 截断修复（EINVAL 终结）：
+                     * v1.2.82 真机铁证：fd=0x00000000ffffffff（AArch64 w4 写 -1
+                     * 零扩展）→ 内核把 4294967295 当合法 fd 号检查 → EINVAL →
+                     * ART uffd heap 判 MMAP_TRYLOCK 不支持 → 降级重建 →
+                     * 无限 dlopen 循环（v1.2.80 帧链定罪全案）。
+                     * 修：entry 停点改写 x4 为 64 位 -1（语义等价：MAP_ANONYMOUS
+                     * 本就该无 fd；非匿名场景该形态也只可能是 -1 笔误）。 */
+                    if (info.u.entry.nr == 222) {
+                        if ((unsigned long long)info.u.entry.args[4]
+                                == 0x00000000ffffffffULL) {
+                            struct tvm_arm_regs mr4;
+                            if (tvm_getregs(t, &mr4) == 0) {
+                                mr4.regs[4] = (unsigned long long)-1;
+                                tvm_setregs(t, &mr4);
+                                static int s_fd_n = 0;
+                                if (s_fd_n++ < 8)
+                                    ptrace_log("[mmap-fd32] 第 %d 次：x4 0xffffffff → 64 位 -1 规范化（t=%d）",
+                                               s_fd_n, (int)t);
+                            }
+                        }
+                    }
                     if (info.u.entry.nr == 29 /* ioctl */) {
                         struct tvm_arm_regs ir;
                         if (tvm_getregs(t, &ir) == 0

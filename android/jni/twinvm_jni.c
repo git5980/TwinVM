@@ -677,6 +677,19 @@ static volatile unsigned long long g_mmap_hint = 0, g_mmap_len = 0;   /* v1.2.23
 static volatile int g_low4_active = 0;
 static volatile int g_low4_rewound = 0;   /* v1.2.92：rewind 重执行标志 */
 static volatile unsigned long long g_low4_want_len = 0;
+/* v1.2.93 ★ 落位记账（修 rewind 重复落位：v1.2.92 真机实锤两次 512MB
+ * 都 FIXED 到 0x12000000——第二块直接覆盖第一块（ART heap 被踩）。
+ * 落过的区间记下来，空洞查找时排除。 */
+#define TVM_LOW4_USED 16
+static struct { unsigned long long lo, len; int used; } g_low4_used[TVM_LOW4_USED];
+static void tvm_low4_mark(unsigned long long lo, unsigned long long len) {
+    for (int i = 0; i < TVM_LOW4_USED; i++)
+        if (!g_low4_used[i].used) {
+            g_low4_used[i].used = 1;
+            g_low4_used[i].lo = lo; g_low4_used[i].len = len;
+            return;
+        }
+}
 /* 在 guest 的 /proc/<pid>/maps 里找低 4GB 的空洞（≥len，对齐 1MB）。
  * 返回 0=没找到。 */
 static unsigned long long tvm_low4_hole(pid_t pid, unsigned long long len) {
@@ -695,6 +708,13 @@ static unsigned long long tvm_low4_hole(pid_t pid, unsigned long long len) {
         }
     }
     fclose(f);
+    /* v1.2.93：并入落位记账区（FIXED 已占的也算已用——防重复落位覆盖） */
+    for (int i = 0; i < TVM_LOW4_USED && n < MAXSEG; i++)
+        if (g_low4_used[i].used) {
+            seg[n].lo = g_low4_used[i].lo;
+            seg[n].hi = g_low4_used[i].lo + g_low4_used[i].len;
+            n++;
+        }
     /* 排序（插入即可，段数少） */
     for (int i = 1; i < n; i++) {
         struct Seg k = seg[i];
@@ -2203,6 +2223,7 @@ static void* tvm_tracer_main(void* arg) {
                                     lr4.regs[3] = lr4.regs[3] | 0x10;  /* MAP_FIXED */
                                     tvm_setregs(t, &lr4);
                                     g_mmap_hint = hole;   /* exit 观测对齐 */
+                                    tvm_low4_mark(hole, g_mmap_len);   /* v1.2.93 记账 */
                                     static int s_low4fix = 0;
                                     if (s_low4fix++ < 12)
                                         ptrace_log("[low4-fix] #%d 强制落位 0x%llx len=0x%llx（MAP_FIXED）",
@@ -2360,6 +2381,7 @@ static void* tvm_tracer_main(void* arg) {
                                 if (s_rw++ < 12)
                                     ptrace_log("[low4-rewind] #%d len=0x%llx → rewind+FIXED 至 0x%llx",
                                                s_rw, g_mmap_len, hole);
+                                tvm_low4_mark(hole, g_mmap_len);   /* v1.2.93 记账 */
                                 g_low4_rewound = 1;
                                 /* 注意：本函数继续走会把 x0 覆盖成观测值——
                                  * 必须立刻跳过后续 x0 写回。做法：rewind 后

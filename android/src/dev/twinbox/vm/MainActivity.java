@@ -126,6 +126,8 @@ public class MainActivity extends Activity implements View.OnClickListener {
         setContentView(root);
     }
 
+    private static volatile int sTickerGen = 0;   /* v1.2.97：ticker 代际 */
+
     private Button makeButton(String text) {
         Button b = new Button(this);
         b.setText(text);
@@ -208,14 +210,25 @@ public class MainActivity extends Activity implements View.OnClickListener {
         final File liveFile = new File(logsDir(),
                 isRunB ? "twinvm-live-b.log" : "twinvm-live.log");
         final long t0 = System.currentTimeMillis();
+        /* v1.2.97 ★ 修复计时器交替闪烁：旧 ticker 未停，新 ticker 又起
+         * ——两个 400ms 循环刷同一个 mOut。静态标志：起 ticker 前先让
+         * 上一代退役（计数器代际制）。 */
+        final int gen = ++sTickerGen;
         final boolean[] running = new boolean[] { true };
         Thread ticker = new Thread(new Runnable() {
             @Override
             public void run() {
-                while (running[0]) {
+                while (running[0] && gen == sTickerGen) {
                     try { Thread.sleep(400); } catch (InterruptedException e) { break; }
                     long sec = (System.currentTimeMillis() - t0) / 1000;
                     String tail = readTail(liveFile, 1600);
+                    /* v1.2.97：终点线检测——日志出现 -pass in 后 15 秒视为
+                     * 已完成，ticker 提前收摊（结果页由 stage0 返回后翻）。 */
+                    if (tail != null && (tail.contains("-pass in") || tail.contains("槽位退出"))
+                            && sec > 8) {
+                        running[0] = false;
+                        break;
+                    }
                     final String show = "\u23f1 已运行 " + sec + " 秒 ｜ 日志 "
                             + (liveFile.length() / 1024) + " KB\n"
                             + "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"
@@ -245,8 +258,12 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 String result;
                 try {
                     /* v0.7.40：把 live 日志路径也交给 native —— 卡死时也能留现场 */
-                    File live = new File(logsDir(), "twinvm-live.log");
-                    result = isRun ? Native.stage0(romPath(), live.getAbsolutePath()) : Native.probe();
+                    /* v1.2.97 ★ Bug 修复：容器B（isRunB）此前错走 probe()
+                     * （三元只判 isRun）——点了 B 只跑了引擎探测，dex 根本没跑。
+                     * 现在 A/B 都走 stage0，且 B 用自己的日志文件。 */
+                    result = (isRun || isRunB)
+                            ? Native.stage0(romPath(), liveFile.getAbsolutePath())
+                            : Native.probe();
                 } catch (Throwable t) {
                     result = "异常: " + t;
                 }

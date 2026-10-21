@@ -86,27 +86,31 @@ public class MainActivity extends Activity implements View.OnClickListener {
         root.addView(title);
 
         TextView sub = new TextView(this);
-        sub.setText("Stage 4.2：真 linker 接管——linker64 拉起 dalvikvm（ART 引导第一跳）");
+        sub.setText("Stage 5：App 容器化——一个 App 里的独立虚拟手机（每容器独立 ART）");
         sub.setTextColor(0xFF9AA0A6);
         sub.setTextSize(13);
         sub.setPadding(0, 12, 0, 24);
         root.addView(sub);
 
-        Button run = makeButton("运行 Stage 4.2 自检（dalvikvm 引导）");
+        /* v1.2.98 Stage 5：Stage 4.2 已全线贯通（stress-all-pass 复现稳定）
+         * ——自检使命完成，主界面精简为纯容器操作。
+         * 容器A（hello.dex·stress 体检）+ 容器B（world.dex·独立体检）。 */
+        Button run = makeButton("▶ 运行容器A（hello.dex）");
         run.setTag("run");
         root.addView(run);
 
-        /* v1.2.96 Stage 5-M1：容器 A（hello.dex）+ 容器 B（world.dex） */
-        Button runB = makeButton("运行容器B（world.dex 容器）");
+        Button runB = makeButton("▶ 运行容器B（world.dex）");
         runB.setTag("runB");
         root.addView(runB);
 
-        Button probe = makeButton("引擎能力探测");
+        /* 探测降级为小字（不占主操作流） */
+        Button probe = makeButton("引擎能力探测（诊断用）");
         probe.setTag("probe");
+        probe.setTextSize(12);
         LinearLayout.LayoutParams lp =
                 new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = 16;
+        lp.topMargin = 24;
         root.addView(probe, lp);
 
         mOut = new TextView(this);
@@ -114,9 +118,9 @@ public class MainActivity extends Activity implements View.OnClickListener {
         mOut.setTextSize(12);
         mOut.setTextColor(0xFF7EE1B4);
         mOut.setPadding(8, 24, 8, 8);
-        mOut.setText("就绪。点「运行 Stage 1 自检」：\n"
-                + "从 ROM 装载 guest 二进制到本进程 fork 出的槽位，\n"
-                + "在其自己的用户态内核下原生执行（同 VMOS 免 root 机制）。");
+        mOut.setText("就绪。点上方按钮启动容器：\n"
+                + "每容器 = 独立槽位进程 + 独立 ART + 独立日志\n"
+                + "A: twinvm-live.log · B: twinvm-live-b.log");
 
         ScrollView sc = new ScrollView(this);
         sc.addView(mOut);

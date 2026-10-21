@@ -49,7 +49,7 @@
 /* v1.2.78 ★ 分级判据之慢速兜底：健康慢速活动（如 ART 信号准备 47/s）
  * 不再被"N*20<峰*8"的峰值下限误杀（v1.2.77 真机实锤：375 停点被杀，
  * 现场 sigaction/getrlimit/sigprocmask——ART init 正常阶段）。 */
-#define VM_EXIT_GRACE2_S 90
+#define VM_EXIT_GRACE2_S 240   /* v1.2.95：冷类装载需要更长（无 dalvik-cache） */
 #endif
 #ifndef VM_EXIT_MIN_ALIVE
 /* 分级判据之"活着"线：静默窗口内 ≥8 停点/s = guest 明显在干活，不杀 */
@@ -1771,8 +1771,14 @@ static void* tvm_tracer_main(void* arg) {
         const VmRomInode* ldr = vm_rom_find((const VmRom*)L->rom, "/system/bin/linker64");
         if (dv && ldr && getenv("TVM_LEGACY_TRAP") == NULL) {
             vm_set_exec_path("/system/bin/dalvikvm");
-            static char* const pargv[] = { (char*)"dalvikvm", (char*)"-cp",
-                                           (char*)"/rom/hello.dex", (char*)"Hello", NULL };
+            /* v1.2.95 ★★★ -Xverify:none：冷校验是 90s 兜底杀不完的主因
+             * （v1.2.93/94 真机：28~70 bytecodes/s——正常应数万；真机 zygote
+             * 靠 boot.art 预校验，我们没有 dalvik-cache 只能全量冷校验）。
+             * VM 沙箱内校验无安全意义（guest 代码本就是我们 ROM 自带），
+             * 跳过校验直通执行。同时兜底 90s→240s（首次类装载仍需时间）。 */
+            static char* const pargv[] = { (char*)"dalvikvm", (char*)"-Xverify:none",
+                                           (char*)"-cp", (char*)"/rom/hello.dex",
+                                           (char*)"Hello", NULL };
             vm_set_exec_cmdline(pargv);
         } else {
             vm_set_exec_path("/bin/guest");

@@ -262,12 +262,16 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 String result;
                 try {
                     /* v0.7.40：把 live 日志路径也交给 native —— 卡死时也能留现场 */
-                    /* v1.2.97 ★ Bug 修复：容器B（isRunB）此前错走 probe()
-                     * （三元只判 isRun）——点了 B 只跑了引擎探测，dex 根本没跑。
-                     * 现在 A/B 都走 stage0，且 B 用自己的日志文件。 */
-                    result = (isRun || isRunB)
-                            ? Native.stage0(romPath(), liveFile.getAbsolutePath())
-                            : Native.probe();
+                    /* v1.2.101 ★ M1 并发：A 走 stage0（宿主进程内，串行语义）；
+                     * B 走 stage0Parallel——fork 独立 b-runner 进程，与 A 真并发。
+                     * （A 保持原样：并发时 A 先点，B 再点即双活。） */
+                    if (isRunB) {
+                        result = Native.stage0Parallel(romPath(), liveFile.getAbsolutePath());
+                    } else if (isRun) {
+                        result = Native.stage0(romPath(), liveFile.getAbsolutePath());
+                    } else {
+                        result = Native.probe();
+                    }
                 } catch (Throwable t) {
                     result = "异常: " + t;
                 }

@@ -3368,6 +3368,95 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
     return result;
 }
 
+/* v1.2.101：b-runner 结果读取线程（宿主侧，后台收结果存文件） */
+static void* tvm_brunner_reader(void* a) {
+    struct { int fd; } *arg = a;
+    int fd = arg->fd;
+    free(arg);
+    char buf[8192];
+    size_t cap = 0, len = 0;
+    char* acc = NULL;
+    ssize_t n;
+    while ((n = read(fd, buf, sizeof(buf))) > 0) {
+        if (len + (size_t)n > cap) {
+            cap = (len + (size_t)n) * 2;
+            char* nb = realloc(acc, cap);
+            if (!nb) { free(acc); close(fd); return NULL; }
+            acc = nb;
+        }
+        memcpy(acc + len, buf, (size_t)n);
+        len += (size_t)n;
+    }
+    close(fd);
+    if (len) {
+        int f = open("/sdcard/Documents/TwinVM/twinvm-b-result.log",
+                    O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (f >= 0) { ssize_t w = write(f, acc, len); (void)w; close(f); }
+    }
+    free(acc);
+    return NULL;
+}
+
+/* v1.2.101 ★★★ M1 并发：并行容器入口。
+ * stage0 全局态密集（g_live_fd/g_t_pid/g_launch/g_cpu…）不可重入——
+ * 串行复用靠复位（v1.2.96），并发必须进程级隔离。
+ * 方案：fork 一个 b-runner 进程，在其内调用现有 stage0（fork 快照=
+ * 全套全局态的独立副本）；结果经管道回传，宿主立刻返回不阻塞。
+ * live 日志由 b-runner 自己写（live-b.log）——与宿主互不干扰。 */
+JNIEXPORT jstring JNICALL
+Java_dev_twinbox_vm_Native_stage0Parallel(JNIEnv* env, jclass cls,
+                                          jstring romPath, jstring liveLog) {
+    /* 先记录参数（fork 前转 C 串） */
+    const char* rom = (*env)->GetStringUTFChars(env, romPath, NULL);
+    const char* live = liveLog ? (*env)->GetStringUTFChars(env, liveLog, NULL) : NULL;
+    if (!rom) { if (live) (*env)->ReleaseStringUTFChars(env, liveLog, live);
+                return (*env)->NewStringUTF(env, "[TwinVM] romPath 转换失败"); }
+
+    int fds[2];
+    if (pipe(fds) != 0) {
+        (*env)->ReleaseStringUTFChars(env, romPath, rom);
+        if (live) (*env)->ReleaseStringUTFChars(env, liveLog, live);
+        return (*env)->NewStringUTF(env, "[TwinVM] pipe 失败");
+    }
+
+    pid_t b = fork();
+    if (b == 0) {
+        /* b-runner：独立进程跑 stage0（全局态副本天然隔离） */
+        close(fds[0]);
+        /* live 日志在子进程里照常由 stage0 打开——live 串已复制 */
+        jstring jrom = (*env)->NewStringUTF(env, rom);
+        jstring jlive = live ? (*env)->NewStringUTF(env, live) : NULL;
+        jstring res = Java_dev_twinbox_vm_Native_stage0(env, cls, jrom, jlive);
+        const char* rstr = res ? (*env)->GetStringUTFChars(env, res, NULL) : "";
+        size_t rl = rstr ? strlen(rstr) : 0;
+        size_t off = 0;
+        while (off < rl) {
+            ssize_t w = write(fds[1], rstr + off, rl - off);
+            if (w <= 0) break;
+            off += (size_t)w;
+        }
+        _exit(0);
+    }
+    close(fds[1]);
+    (*env)->ReleaseStringUTFChars(env, romPath, rom);
+    if (live) (*env)->ReleaseStringUTFChars(env, liveLog, live);
+
+    /* 宿主侧：读结果用后台线程（不卡 UI），此处先返回启动确认 */
+    int rdfd = fds[0];
+    pthread_t rd;
+    struct { int fd; } *arg = malloc(sizeof(*arg));
+    arg->fd = rdfd;
+    if (pthread_create(&rd, NULL, tvm_brunner_reader, arg) == 0) {
+        pthread_detach(rd);
+        return (*env)->NewStringUTF(env,
+            "[TwinVM] ══ 容器B 已在独立进程启动（与 A 并发）══\n"
+            "结果见 twinvm-live-b.log（完成后自动更新结果页提示）\n");
+    }
+    close(rdfd);
+    free(arg);
+    return (*env)->NewStringUTF(env, "[TwinVM] 读取线程创建失败（容器仍在跑，看日志）");
+}
+
 /* v1.2.96 Stage 5-M1：容器 dex 选择（声明在文件头，此处仅入口） */
 JNIEXPORT void JNICALL
 Java_dev_twinbox_vm_Native_setDex(JNIEnv* env, jclass cls, jstring dexPath) {

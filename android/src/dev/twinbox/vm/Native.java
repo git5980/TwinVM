@@ -16,4 +16,7 @@ public final class Native {
 
     /** Stage 5-M1：选择容器要跑的 dex（ROM 内绝对路径，如 /rom/world.dex）。 */
     public static native void setDex(String dexPath);
+
+    /** v1.2.101 M1 并发：独立进程跑容器 B（与 A 并发，结果见 twinvm-live-b.log）。 */
+    public static native String stage0Parallel(String romPath, String liveLog);
 }

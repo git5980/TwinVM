@@ -2853,6 +2853,14 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
         }
     }
 
+    /* v1.2.98b：容器身份横幅——日志第一行可辨（防"看起来都一样"） */
+    {
+        char banner[160];
+        int bn = snprintf(banner, sizeof(banner),
+            "[TwinVM] ══ 容器启动 ══ dex=%s ══ live=%s ══\n",
+            g_dex_path, liveLog ? "on" : "off");
+        if (bn > 0 && g_live_fd >= 0) live_write(banner, (size_t)bn);
+    }
     /* v1.2.96 ★★★ Stage 5-M1：串行多容器复位。
      * 案 B 的第一步先走"串行复用"（第二次调用 stage0 = 第二个容器）：
      * 每次进入先复位运行期全局态，保证容器间零残留。

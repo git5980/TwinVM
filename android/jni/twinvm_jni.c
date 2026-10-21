@@ -722,21 +722,33 @@ static unsigned long long tvm_low4_hole(pid_t pid, unsigned long long len) {
         while (j >= 0 && seg[j].lo > k.lo) { seg[j+1] = seg[j]; j--; }
         seg[j+1] = k;
     }
-    /* 逐间隙找（从高往低——靠近 4GB 的更可能是 ART 期望区） */
-    unsigned long long prev_hi = 0;
+    /* v1.2.94 ★ 候选枚举重写（修 v1.2.93 记账未生效之谜）：
+     * 逐间隙从高往低枚举所有候选，每个先 1MB 对齐再【双重校验】：
+     *   ① 与记账表不重叠；② 与本函数收集的段不重叠（防御排序/时序
+     *      边角——段表里本该有记账区，但窗口期可能不同步）。
+     * 校验不过就换下一个间隙，绝不返回与已用区冲突的地址。 */
+    unsigned long long prev_hi2 = 0;
     for (int i = 0; i <= n; i++) {
-        unsigned long long gap_lo = (i == n) ? 0 : seg[i].lo;
+        unsigned long long gap_end = (i == n) ? 0x100000000ULL : seg[i].lo;
         if (i > 0) {
-            unsigned long long gap_start = prev_hi;
-            unsigned long long gap_end = seg[i].lo;
-            if (gap_end > gap_start && gap_end - gap_start >= len)
-                return (gap_start + 0xFFFFFUL) & ~0xFFFFFULL;  /* 1MB 对齐 */
+            unsigned long long gap_start = prev_hi2;
+            if (gap_end > gap_start && gap_end - gap_start >= len + 0xFFFFFULL) {
+                unsigned long long cand = (gap_start + 0xFFFFFUL) & ~0xFFFFFULL;
+                /* 校验①：记账表不重叠 */
+                int overlap = 0;
+                for (int k = 0; k < TVM_LOW4_USED; k++)
+                    if (g_low4_used[k].used
+                        && cand < g_low4_used[k].lo + g_low4_used[k].len
+                        && cand + len > g_low4_used[k].lo) { overlap = 1; break; }
+                /* 校验②：段表不重叠 */
+                if (!overlap)
+                    for (int k = 0; k < n; k++)
+                        if (cand < seg[k].hi && cand + len > seg[k].lo) { overlap = 1; break; }
+                if (!overlap) return cand;
+            }
         }
-        if (i < n) prev_hi = seg[i].hi;
+        if (i < n) prev_hi2 = seg[i].hi;
     }
-    /* 头部间隙（0 到第一段） */
-    if (n > 0 && seg[0].lo >= len) return 0x100000;  /* 1MB 起（避 mmap_min_addr） */
-    if (n == 0) return 0x100000;
     return 0;
 }
 static volatile int g_mmap_pend = 0;

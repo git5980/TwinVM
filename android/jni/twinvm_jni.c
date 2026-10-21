@@ -401,6 +401,7 @@ static void* tvm_inst_thread(void* a) {
 
 extern void (*vm_live_log_hook)(const char*, int);
 
+static char g_dex_path[96] = "/rom/hello.dex";   /* v1.2.100：容器 dex 选择（setDex 写，fork 快照消费） */
 static void jni_guest_main(const VmRom* rom, int console_fd) {
     /* v1.0.7 ★★ 关闭**继承来的宿主 fd**（这是 guest 槽位的真正入口！）
      * 真机 v1.0.6 实锤：我在 tvm_tracer_main 的 fork 里加的清理**没生效**，
@@ -514,9 +515,23 @@ static void jni_guest_main(const VmRom* rom, int console_fd) {
         const VmRomInode* dv = vm_rom_find(rom, "/system/bin/dalvikvm");
         const VmRomInode* ld = vm_rom_find(rom, "/system/bin/linker64");
         if (dv && ld && getenv("TVM_LEGACY_TRAP") == NULL) {
-            /* 与 guest_stage42.c 完全一致的 argv/envp（含 BOOTCLASSPATH 三件套规则） */
-            static char* gargv[] = { (char*)"dalvikvm", (char*)"-cp",
-                                     (char*)"/rom/hello.dex", (char*)"Hello", NULL };
+            /* v1.2.100 ★★★【B 容器跑 hello 的真凶】：本函数（fork 后子进程）
+             * 的 gargv 一直【写死 /rom/hello.dex】——setDex 改的 g_dex_path
+             * 在父进程里，从来没传进来！修：fork 后用 g_dex_path（fork 复制
+             * 的是 setDex 已生效的快照 ✓）+ 类名动态推导。
+             * （-Xverify:none：冷校验在无 dalvik-cache 下慢千倍，沙箱内无意义） */
+            static char s_clsname[64];
+            {
+                const char* base = strrchr(g_dex_path, '/');
+                base = base ? base + 1 : g_dex_path;
+                snprintf(s_clsname, sizeof(s_clsname), "%s", base);
+                char* dot = strchr(s_clsname, '.');
+                if (dot) *dot = 0;
+                if (s_clsname[0] >= 'a' && s_clsname[0] <= 'z') s_clsname[0] -= 32;
+            }
+            static char* gargv[] = { (char*)"dalvikvm", (char*)"-Xverify:none",
+                                     (char*)"-cp", g_dex_path,
+                                     s_clsname, NULL };
             static char* genvp[] = {
                 (char*)"BOOTCLASSPATH=/apex/com.android.art/javalib/core-oj.jar:"
                        "/apex/com.android.art/javalib/core-libart.jar:"
@@ -656,7 +671,6 @@ struct tvm_psi {                     /* 内核 ptrace_syscall_info 布局 */
 static pthread_t g_t_thr;
 static int      g_t_pid;
 static volatile int g_t_done, g_t_status, g_t_events;
-static char g_dex_path[96] = "/rom/hello.dex";   /* v1.2.96：容器 dex 选择 */
 /* v1.2.19 ★★★ 看门狗的判据修正（用户实测指出）：
  * 旧判据是"**90 秒无控制台输出**"，但日志只记录**被拦截的** syscall ——
  * 而 msync/mmap/mprotect/futex/brk 等**不在拦截清单**的 syscall 干活再久也一行不输出。

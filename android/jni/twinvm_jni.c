@@ -656,6 +656,7 @@ struct tvm_psi {                     /* 内核 ptrace_syscall_info 布局 */
 static pthread_t g_t_thr;
 static int      g_t_pid;
 static volatile int g_t_done, g_t_status, g_t_events;
+static char g_dex_path[96] = "/rom/hello.dex";   /* v1.2.96：容器 dex 选择 */
 /* v1.2.19 ★★★ 看门狗的判据修正（用户实测指出）：
  * 旧判据是"**90 秒无控制台输出**"，但日志只记录**被拦截的** syscall ——
  * 而 msync/mmap/mprotect/futex/brk 等**不在拦截清单**的 syscall 干活再久也一行不输出。
@@ -1776,9 +1777,19 @@ static void* tvm_tracer_main(void* arg) {
              * 靠 boot.art 预校验，我们没有 dalvik-cache 只能全量冷校验）。
              * VM 沙箱内校验无安全意义（guest 代码本就是我们 ROM 自带），
              * 跳过校验直通执行。同时兜底 90s→240s（首次类装载仍需时间）。 */
+            /* v1.2.96：类名从 dex 路径推（/rom/hello.dex→Hello, world.dex→World） */
+            static char clsname[64];
+            {
+                const char* base = strrchr(g_dex_path, '/');
+                base = base ? base + 1 : g_dex_path;
+                snprintf(clsname, sizeof(clsname), "%s", base);
+                char* dot = strchr(clsname, '.');
+                if (dot) *dot = 0;
+                if (clsname[0] >= 'a' && clsname[0] <= 'z') clsname[0] -= 32;  /* 首字母大写 */
+            }
             static char* const pargv[] = { (char*)"dalvikvm", (char*)"-Xverify:none",
-                                           (char*)"-cp", (char*)"/rom/hello.dex",
-                                           (char*)"Hello", NULL };
+                                           (char*)"-cp", g_dex_path,
+                                           clsname, NULL };
             vm_set_exec_cmdline(pargv);
         } else {
             vm_set_exec_path("/bin/guest");
@@ -2842,6 +2853,23 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
         }
     }
 
+    /* v1.2.96 ★★★ Stage 5-M1：串行多容器复位。
+     * 案 B 的第一步先走"串行复用"（第二次调用 stage0 = 第二个容器）：
+     * 每次进入先复位运行期全局态，保证容器间零残留。
+     * （并发多 slot 的 pthread/进程级隔离是 M1 第二步——VmSlot 化。） */
+    {
+        g_guest_ticks = 0; g_ticks_at_real_out = 0;
+        g_last_real_out = 0; g_nr_idx = 0; g_futex_idx = 0;
+        g_nfail = 0; g_t_events = 0; g_t_last_nr = -1;
+        g_mmap_pend = 0; g_mmap_hint = 0; g_mmap_len = 0;
+        g_low4_active = 0; g_low4_rewound = 0; g_low4_want_len = 0;
+        memset(g_virt, 0, sizeof(g_virt));
+        memset((void*)g_low4_used, 0, sizeof(g_low4_used));
+        g_want_stack = 0; g_stack_done = 0; g_hang_probe = 0;
+        g_t_done = 0; g_t_status = 0; g_t_pid = 0; g_virt_seq = 0;
+        memset((void*)g_segnote, 0, sizeof(g_segnote));
+        for (int zi = 0; zi < TVM_NR_RING; zi++) g_nr_ring[zi] = 0;
+    }
     /* v0.7.71：策略探针 = 内嵌在 .so 里的独立可执行（无 libc，3248B）。
      * 落盘到 /data/local/tmp 再 fork+execv —— 与 App 无亲缘依赖，
      * 被 SECCOMP_RET_KILL_PROCESS 杀掉也不会连坐。
@@ -3316,6 +3344,16 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
     jstring result = console_to_jstring(env, full, len + strlen(tail));   /* NUL 安全转换 */
     free(full);
     return result;
+}
+
+/* v1.2.96 Stage 5-M1：容器 dex 选择（声明在文件头，此处仅入口） */
+JNIEXPORT void JNICALL
+Java_dev_twinbox_vm_Native_setDex(JNIEnv* env, jclass cls, jstring dexPath) {
+    const char* p = dexPath ? (*env)->GetStringUTFChars(env, dexPath, NULL) : NULL;
+    if (p && p[0] == '/') {
+        snprintf(g_dex_path, sizeof(g_dex_path), "%s", p);
+    }
+    if (p) (*env)->ReleaseStringUTFChars(env, dexPath, p);
 }
 
 JNIEXPORT jstring JNICALL

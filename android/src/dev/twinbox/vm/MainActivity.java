@@ -96,6 +96,11 @@ public class MainActivity extends Activity implements View.OnClickListener {
         run.setTag("run");
         root.addView(run);
 
+        /* v1.2.96 Stage 5-M1：容器 A（hello.dex）+ 容器 B（world.dex） */
+        Button runB = makeButton("运行容器B（world.dex 容器）");
+        runB.setTag("runB");
+        root.addView(runB);
+
         Button probe = makeButton("引擎能力探测");
         probe.setTag("probe");
         LinearLayout.LayoutParams lp =
@@ -182,6 +187,10 @@ public class MainActivity extends Activity implements View.OnClickListener {
     @Override
     public void onClick(final View v) {
         final boolean isRun = "run".equals(v.getTag());
+        final boolean isRunB = "runB".equals(v.getTag());
+        /* v1.2.96：容器 B 换 dex+独立日志（串行多容器第一步） */
+        if (isRunB) Native.setDex("/rom/world.dex");
+        else if (isRun) Native.setDex("/rom/hello.dex");
         /* v0.8.9 ★ 实时进度：不再只显示"运行中"干等。
          * 每 400ms 读 live 日志尾部并刷新界面，同时显示已运行秒数与日志大小。 */
         if (mRunLock != null) mRunLock.acquire(10 * 60 * 1000L);   /* v1.2.69：防 CPU 睡眠 */
@@ -196,7 +205,8 @@ public class MainActivity extends Activity implements View.OnClickListener {
         if (!hasStoragePermission()) {
             requestPermissions(new String[]{"android.permission.WRITE_EXTERNAL_STORAGE"}, 100);
         }
-        final File liveFile = new File(logsDir(), "twinvm-live.log");
+        final File liveFile = new File(logsDir(),
+                isRunB ? "twinvm-live-b.log" : "twinvm-live.log");
         final long t0 = System.currentTimeMillis();
         final boolean[] running = new boolean[] { true };
         Thread ticker = new Thread(new Runnable() {

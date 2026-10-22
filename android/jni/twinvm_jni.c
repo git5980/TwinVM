@@ -186,7 +186,27 @@ static void jni_fault_diag(int sig, siginfo_t* si, void* vuc) {
  * 这里做双保险：引擎侧已在 vm_console_write() 丢弃 NUL；本函数再逐字节扫一遍，
  * NUL/其余 C0 控制字符折成 '.'，并给总长设上限（防止 ART 引导期日志无限增长把
  * Java 字符串撑爆）。 */
+/* v1.2.103：b-runner 纯 C 通道——fd>=0 时 stage0 的返回走 write(fd)，
+ * JNI env 全部旁路（fork 后子进程不碰 Java 堆——闪退根治） */
+static int g_c_out_fd = -1;
+static char g_c_rom_path[512] = "", g_c_live_path[512] = "";   /* b-runner 入参 */
+
+static void tvm_c_out_write(const char* buf, size_t len) {
+    if (g_c_out_fd >= 0 && buf && len) {
+        size_t off = 0;
+        while (off < len) {
+            ssize_t w = write(g_c_out_fd, buf + off, len - off);
+            if (w <= 0) break;
+            off += (size_t)w;
+        }
+    }
+}
+
 static jstring console_to_jstring(JNIEnv* env, const char* buf, size_t len) {
+    if (g_c_out_fd >= 0) {           /* b-runner 纯 C 通道 */
+        tvm_c_out_write(buf, len);
+        return NULL;
+    }
     size_t cap = len;
     const size_t LIMIT = (size_t)3 << 20;        /* 3MB 上限 */
     int truncated = 0;
@@ -2843,10 +2863,17 @@ static void* tvm_tracer_main(void* arg) {
 
 JNIEXPORT jstring JNICALL
 Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstring liveLog) {
-    const char* path = (*env)->GetStringUTFChars(env, romPath, NULL);
+    const char* path;
+    if (romPath) {
+        path = (*env)->GetStringUTFChars(env, romPath, NULL);
+    } else if (g_c_out_fd >= 0) {
+        path = g_c_rom_path;            /* b-runner 纯 C 模式 */
+    } else {
+        path = "/nonexistent";
+    }
     VmRom rom;
     int rc = vm_rom_load(&rom, path);
-    (*env)->ReleaseStringUTFChars(env, romPath, path);
+    if (romPath) (*env)->ReleaseStringUTFChars(env, romPath, path);
     if (rc != 0) {
         char b[160];
         snprintf(b, sizeof(b), "[TwinVM] ROM 装载失败: %d（assets 损坏？）", rc);
@@ -2855,15 +2882,17 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
 
     /* v0.7.48：live 日志提前打开（策略探针与后续控制台都往里写） */
     g_live_fd = -1;
-    if (liveLog) {
-        const char* lp = (*env)->GetStringUTFChars(env, liveLog, NULL);
+    const char* lp_c = NULL;
+    if (!liveLog && g_c_out_fd >= 0) lp_c = g_c_live_path[0] ? g_c_live_path : NULL;
+    if (liveLog || lp_c) {
+        const char* lp = lp_c ? lp_c : (*env)->GetStringUTFChars(env, liveLog, NULL);
         if (lp) {
             g_live_fd = open(lp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
             /* v1.2.61：记住日志目录（扫雷指纹缓存放这里——App 必可写） */
             const char* slash = strrchr(lp, '/');
             if (slash && (size_t)(slash - lp) < sizeof(g_logs_dir))
                 snprintf(g_logs_dir, sizeof(g_logs_dir), "%.*s", (int)(slash - lp), lp);
-            (*env)->ReleaseStringUTFChars(env, liveLog, lp);
+            if (!lp_c) (*env)->ReleaseStringUTFChars(env, liveLog, lp);
         }
     }
 
@@ -3419,22 +3448,25 @@ Java_dev_twinbox_vm_Native_stage0Parallel(JNIEnv* env, jclass cls,
         return (*env)->NewStringUTF(env, "[TwinVM] pipe 失败");
     }
 
+    /* v1.2.103 ★★★ 闪退真凶：fork 后子进程里调 NewStringUTF/stage0——
+     * fork 只继承调用线程，ART 运行时的 GC 锁/JNI 表处于任意中间态，
+     * 子进程一碰 Java 堆就崩（v1.2.102 真机闪退实锤；v1.2.101 的 13s
+     * 只是运气）。正解：**fork 后只用 POSIX**——stage0 的核心逻辑在
+     * tvm_run_rom（纯 C），子进程直接调它；返回串经管道回传。
+     * JNI 环境（env）绝不在子进程使用。 */
     pid_t b = fork();
     if (b == 0) {
-        /* b-runner：独立进程跑 stage0（全局态副本天然隔离） */
         close(fds[0]);
-        /* live 日志在子进程里照常由 stage0 打开——live 串已复制 */
-        jstring jrom = (*env)->NewStringUTF(env, rom);
-        jstring jlive = live ? (*env)->NewStringUTF(env, live) : NULL;
-        jstring res = Java_dev_twinbox_vm_Native_stage0(env, cls, jrom, jlive);
-        const char* rstr = res ? (*env)->GetStringUTFChars(env, res, NULL) : "";
-        size_t rl = rstr ? strlen(rstr) : 0;
-        size_t off = 0;
-        while (off < rl) {
-            ssize_t w = write(fds[1], rstr + off, rl - off);
-            if (w <= 0) break;
-            off += (size_t)w;
-        }
+        /* v1.2.103 b-runner：纯 C 世界——fork 后不碰任何 JNI/Java 堆。
+         * g_c_out_fd >= 0 时 stage0 的所有输出走 write(fd)，env 全旁路；
+         * 入参走 g_c_rom_path/g_c_live_path（fork 前备好）。 */
+        g_c_out_fd = fds[1];
+        snprintf(g_c_rom_path, sizeof(g_c_rom_path), "%s", rom);
+        snprintf(g_c_live_path, sizeof(g_c_live_path), "%s", live ? live : "");
+        /* stage0 内部唯一的 JNI 危险点已全部双模式化；这里 env/cls 传原值
+         * 但【不会】被触碰（g_c_out_fd 生效时所有 env-> 调用都被跳过）。 */
+        jstring r = Java_dev_twinbox_vm_Native_stage0(NULL, NULL, NULL, NULL);
+        (void)r;
         _exit(0);
     }
     close(fds[1]);

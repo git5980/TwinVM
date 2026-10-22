@@ -206,7 +206,13 @@ public class MainActivity extends Activity implements View.OnClickListener {
             if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(si);
             else startService(si);
         } catch (Throwable ignore) { }
-        mOut.setText("\u25b6 启动中…\n（正在解析 ROM / 安装拦截器）");
+        if (!isRunB) {
+            mOut.setText("\u25b6 启动中…\n（正在解析 ROM / 安装拦截器）");
+        } else {
+            /* v1.2.102：B 并发路径完全旁路 UI 状态机——不覆盖当前显示
+             * （A 的实时画面保住）、不启 ticker、不翻结果页。 */
+            mOut.append("\n[容器B] 已请求启动（独立进程）…\n");
+        }
         /* v1.2.51：授权跟手势当场弹（不藏菜单）——首次点"运行"请求存储权限 */
         if (!hasStoragePermission()) {
             requestPermissions(new String[]{"android.permission.WRITE_EXTERNAL_STORAGE"}, 100);
@@ -218,7 +224,31 @@ public class MainActivity extends Activity implements View.OnClickListener {
          * ——两个 400ms 循环刷同一个 mOut。静态标志：起 ticker 前先让
          * 上一代退役（计数器代际制）。 */
         final int gen = ++sTickerGen;
-        final boolean[] running = new boolean[] { true };
+        final boolean[] running = new boolean[] { !isRunB };
+        if (isRunB) {
+            /* v1.2.102：B 的并发路径不启 ticker——A 的表/画面原样保留。
+             * B 的完成提示走 live-b.log 的文件监听（下面轻线程）。 */
+            Thread bwatch = new Thread(new Runnable() {
+                @Override public void run() {
+                    try { Thread.sleep(1500); } catch (InterruptedException ignored) { }
+                    for (int i = 0; i < 400; i++) {   /* 最多等 ~13 分钟 */
+                        try { Thread.sleep(2000); } catch (InterruptedException ignored) { }
+                        String tail = readTail(liveFile, 400);
+                        if (tail != null && (tail.contains("-pass in") || tail.contains("槽位退出"))) {
+                            final String t = tail.length() > 200 ? tail.substring(tail.length()-200) : tail;
+                            mUi.post(new Runnable() {
+                                @Override public void run() {
+                                    mOut.append("\n[容器B 完成]\n" + t + "\n");
+                                }
+                            });
+                            break;
+                        }
+                    }
+                }
+            });
+            bwatch.setDaemon(true);
+            bwatch.start();
+        }
         Thread ticker = new Thread(new Runnable() {
             @Override
             public void run() {
@@ -274,6 +304,13 @@ public class MainActivity extends Activity implements View.OnClickListener {
                     }
                 } catch (Throwable t) {
                     result = "异常: " + t;
+                }
+                if (isRunB) {
+                    /* v1.2.102 ★ B 并发旁路：秒回的启动确认不触发任何收尾——
+                     * 不停 RunService（A 可能还在跑）、不 release 锁、不翻页、
+                     * 不弹"日志已保存"（那是 A 的终点仪式）。B 的结果走
+                     * live-b.log 监听提示。 */
+                    return;
                 }
                 running[0] = false;
                 if (mRunLock != null) mRunLock.release();   /* v1.2.69：收场释放 */

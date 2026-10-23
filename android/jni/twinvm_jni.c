@@ -3549,6 +3549,65 @@ Java_dev_twinbox_vm_Native_installApk(JNIEnv* env, jclass cls,
     return (*env)->NewStringUTF(env, name);
 }
 
+/* v1.2.113 ★ M2：列出容器已装 APK（/data/app/ 下全部文件） */
+JNIEXPORT jobjectArray JNICALL
+Java_dev_twinbox_vm_Native_listInstalledApks(JNIEnv* env, jclass cls, jstring romPath) {
+    const char* rom = romPath ? (*env)->GetStringUTFChars(env, romPath, NULL) : NULL;
+    if (!rom) return NULL;
+    VmRom r;
+    if (vm_rom_load(&r, rom) != 0) {
+        (*env)->ReleaseStringUTFChars(env, romPath, rom);
+        return NULL;
+    }
+    /* 数 /data/app/ 前缀 */
+    const char* P = "/data/app/";
+    size_t pl = strlen(P);
+    int n = 0;
+    for (uint32_t i = 0; i < r.inode_count; i++)
+        if (strncmp(r.inodes[i].name, P, pl) == 0) n++;
+    jclass scls = (*env)->FindClass(env, "java/lang/String");
+    jobjectArray arr = (*env)->NewObjectArray(env, n > 0 ? n : 1, scls, NULL);
+    int k = 0;
+    for (uint32_t i = 0; i < r.inode_count && k < n; i++) {
+        if (strncmp(r.inodes[i].name, P, pl) == 0) {
+            (*env)->SetObjectArrayElement(env, arr, k++,
+                (*env)->NewStringUTF(env, r.inodes[i].name));
+        }
+    }
+    vm_rom_close(&r);
+    (*env)->ReleaseStringUTFChars(env, romPath, rom);
+    return arr;
+}
+
+/* v1.2.113 M2：从 ROM 提取文件到宿主路径（Java 侧扫描 dex 用） */
+JNIEXPORT jboolean JNICALL
+Java_dev_twinbox_vm_Native_extractFile(JNIEnv* env, jclass cls,
+                                        jstring romPath, jstring innerPath,
+                                        jstring outPath) {
+    const char* rom = romPath ? (*env)->GetStringUTFChars(env, romPath, NULL) : NULL;
+    const char* inn = innerPath ? (*env)->GetStringUTFChars(env, innerPath, NULL) : NULL;
+    const char* out = outPath ? (*env)->GetStringUTFChars(env, outPath, NULL) : NULL;
+    jboolean ok = 0;
+    if (rom && inn && out) {
+        VmRom r;
+        if (vm_rom_load(&r, rom) == 0) {
+            const VmRomInode* ni = vm_rom_find(&r, inn);
+            if (ni && ni->size > 0) {
+                FILE* f = fopen(out, "wb");
+                if (f) {
+                    ok = fwrite(ni->map, 1, ni->size, f) == ni->size;
+                    fclose(f);
+                }
+            }
+            vm_rom_close(&r);
+        }
+    }
+    if (rom) (*env)->ReleaseStringUTFChars(env, romPath, rom);
+    if (inn) (*env)->ReleaseStringUTFChars(env, innerPath, inn);
+    if (out) (*env)->ReleaseStringUTFChars(env, outPath, out);
+    return ok;
+}
+
 /* v1.2.111：ROM 全量 CRC 验证（后台自愈用；损坏则删掉重提 assets） */
 JNIEXPORT jboolean JNICALL
 Java_dev_twinbox_vm_Native_verifyRom(JNIEnv* env, jclass cls, jstring romPath) {

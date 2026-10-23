@@ -28,7 +28,11 @@ import java.io.OutputStream;
  */
 public class MainActivity extends Activity implements View.OnClickListener {
 
-    private TextView mOut;              /* 单栏模式 = A 的显示（兼容旧路径） */
+    private TextView mOut;
+    /* v1.2.113 M2：容器C 选择态（null=未选，需弹列表） */
+    private String mCRunApk;
+    private String mCRunClass;
+    private Button mRunCButton;              /* 单栏模式 = A 的显示（兼容旧路径） */
     private TextView mOutB;             /* v1.2.104：双栏模式的 B 栏 */
     private LinearLayout mOutRow;       /* v1.2.104：单/双栏容器 */
     private ScrollView mScrollerA, mScrollerB;
@@ -130,9 +134,10 @@ public class MainActivity extends Activity implements View.OnClickListener {
         root.addView(runB);
 
         /* 探测降级为小字（不占主操作流） */
-        /* v1.2.108 M2：容器C——真 APK 类路径（/data/app/SampleApp.apk） */
-        Button runC = makeButton("▶ 运行容器C（SampleApp.apk · M2）");
+        /* v1.2.113 M2：容器C——已装应用列表（点开选 APK 运行） */
+        Button runC = makeButton("📦 容器C：已装应用（点开选 APK 运行）");
         runC.setTag("runC");
+        mRunCButton = runC;
         root.addView(runC);
 
         /* v1.2.109 M2：运行期安装——选任意 APK 装进容器 ROM */
@@ -237,6 +242,8 @@ public class MainActivity extends Activity implements View.OnClickListener {
         final boolean isRun = "run".equals(v.getTag());
         final boolean isRunB = "runB".equals(v.getTag());
         final boolean isRunC = "runC".equals(v.getTag());
+        /* v1.2.113 M2：容器C → 已装应用列表（未选时拦截弹列表） */
+        if (isRunC && mCRunApk == null) { showApkList(); return; }
         /* v1.2.109 M2：安装——拉起系统文件选择器（结果在 onActivityResult） */
         if ("install".equals(v.getTag())) {
             try {
@@ -261,10 +268,10 @@ public class MainActivity extends Activity implements View.OnClickListener {
             return;
         }
         /* v1.2.96：容器 B 换 dex+独立日志（串行多容器第一步）。
-         * v1.2.108 M2：容器 C = 真 APK 类路径（/data/app/SampleApp.apk）。 */
+         * v1.2.113 M2：容器 C = 应用列表 → 点选 APK → 运行。 */
         if (isRunB) Native.setDex("/rom/world.dex");
-        else if (isRunC) { Native.setDex("/data/app/SampleApp.apk");
-                           Native.setMainClass("com.twinvm.sample.Main"); }
+        else if (isRunC) { Native.setDex(mCRunApk);
+                           Native.setMainClass(mCRunClass); }
         else if (isRun) Native.setDex("/rom/hello.dex");
         /* v0.8.9 ★ 实时进度：不再只显示"运行中"干等。
          * 每 400ms 读 live 日志尾部并刷新界面，同时显示已运行秒数与日志大小。 */
@@ -553,6 +560,146 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 });
             }
         }, "apk-installer").start();
+    }
+
+    /* ═══════ v1.2.113 M2：容器C 应用列表 ═══════ */
+
+    private static int le32(byte[] b, int o) {
+        return (b[o] & 0xFF) | (b[o + 1] & 0xFF) << 8
+                | (b[o + 2] & 0xFF) << 16 | (b[o + 3] & 0xFF) << 24;
+    }
+
+    /** dex string 表扫描：找含 "Main" 的类描述符（Lxxx/yyy/Main;）→ 建议入口 */
+    private String suggestMainClass(byte[] dex) {
+        try {
+            if (dex.length < 0x40) return null;
+            int ssz = le32(dex, 0x38), soff = le32(dex, 0x3C);
+            if (ssz <= 0 || ssz > 200000 || soff <= 0 || soff + 4L * ssz > dex.length)
+                return null;
+            String best = null;
+            for (int i = 0; i < ssz; i++) {
+                int ido = le32(dex, soff + i * 4);
+                if (ido < 0 || ido + 8 > dex.length) continue;
+                int p = ido;
+                while (p < dex.length && (dex[p] & 0x80) != 0) p++;  /* uleb128 size */
+                if (p >= dex.length) continue;
+                p++;
+                int e2 = p;
+                StringBuilder sb = new StringBuilder();
+                while (e2 < dex.length && dex[e2] != 0 && sb.length() < 300) {
+                    sb.append((char) (dex[e2] & 0xFF));
+                    e2++;
+                }
+                String str = sb.toString();
+                if (str.startsWith("L") && str.endsWith(";") && str.indexOf("Main") > 0) {
+                    String cls = str.substring(1, str.length() - 1).replace('/', '.');
+                    if (str.endsWith("/Main;")) return cls;   /* 精确 Main 优先 */
+                    if (best == null) best = cls;
+                }
+            }
+            return best;
+        } catch (Throwable t) { return null; }
+    }
+
+    /** 从（已提取的）APK 文件读 classes.dex → 扫入口建议 */
+    private String suggestFromApk(File apk) {
+        try {
+            java.util.zip.ZipFile zf = new java.util.zip.ZipFile(apk);
+            java.util.zip.ZipEntry e = zf.getEntry("classes.dex");
+            if (e == null) { zf.close(); return null; }
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            java.io.InputStream in = zf.getInputStream(e);
+            byte[] b = new byte[8192];
+            int n;
+            while ((n = in.read(b)) > 0) bo.write(b, 0, n);
+            in.close(); zf.close();
+            return suggestMainClass(bo.toByteArray());
+        } catch (Throwable t) { return null; }
+    }
+
+    private void showApkList() {
+        mOut.setText("\u25b6 正在读取容器已装应用…\n");
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    final String rom = romPath();
+                    final String[] apks = Native.listInstalledApks(rom);
+                    if (apks == null || apks.length == 0) {
+                        mUi.post(new Runnable() { @Override public void run() {
+                            mOut.setText("容器里还没有应用\n（用 [\u2b07 安装 APK 进容器] 装一个）\n");
+                        } });
+                        return;
+                    }
+                    final String[] labels = new String[apks.length];
+                    final String[] suggests = new String[apks.length];
+                    for (int i = 0; i < apks.length; i++) {
+                        String name = apks[i].substring(apks[i].lastIndexOf('/') + 1);
+                        String sugg;
+                        if ("/data/app/SampleApp.apk".equals(apks[i])) {
+                            sugg = "com.twinvm.sample.Main";   /* 内置映射 */
+                        } else {
+                            File tmp = new File(getCacheDir(), "scan.apk");
+                            sugg = Native.extractFile(rom, apks[i], tmp.getAbsolutePath())
+                                    ? suggestFromApk(tmp) : null;
+                            tmp.delete();
+                        }
+                        suggests[i] = sugg;
+                        labels[i] = name + "\n    " + (sugg != null ? sugg : "（入口未知）");
+                    }
+                    mUi.post(new Runnable() { @Override public void run() {
+                        new android.app.AlertDialog.Builder(MainActivity.this)
+                            .setTitle("容器已装应用（点选运行）")
+                            .setItems(labels, new android.content.DialogInterface
+                                    .OnClickListener() {
+                                @Override public void onClick(
+                                        android.content.DialogInterface d, int which) {
+                                    pickApk(apks[which], suggests[which]);
+                                }
+                            })
+                            .setNegativeButton("取消", null)
+                            .show();
+                    } });
+                } catch (final Throwable t) {
+                    mUi.post(new Runnable() { @Override public void run() {
+                        mOut.setText("读取失败: " + t + "\n");
+                    } });
+                }
+            }
+        }, "apk-lister").start();
+    }
+
+    private void pickApk(final String romInnerPath, final String suggest) {
+        mCRunApk = romInnerPath;
+        if (suggest != null && suggest.endsWith(".Main")) {
+            mCRunClass = suggest;
+            mRunCButton.performClick();   /* 已知入口 → 直接跑 */
+            return;
+        }
+        /* 未知/非 Main 入口 → 输入框（预填建议） */
+        final android.widget.EditText et = new android.widget.EditText(this);
+        et.setText(suggest != null ? suggest : "");
+        et.setHint("如 com.example.Main（含 main(String[]) 的类）");
+        new android.app.AlertDialog.Builder(this)
+            .setTitle("入口主类：" + romInnerPath.substring(romInnerPath.lastIndexOf('/') + 1))
+            .setMessage("该 APK 无静态 main 入口（Activity 类需 M3）。\n"
+                + "输入要运行的类名（须含 main(String[])）：")
+            .setView(et)
+            .setPositiveButton("运行", new android.content.DialogInterface
+                    .OnClickListener() {
+                @Override public void onClick(android.content.DialogInterface d, int w) {
+                    String c = et.getText().toString().trim();
+                    if (c.length() == 0) { mCRunApk = null; return; }
+                    mCRunClass = c;
+                    mRunCButton.performClick();
+                }
+            })
+            .setNegativeButton("取消", new android.content.DialogInterface
+                    .OnClickListener() {
+                @Override public void onClick(android.content.DialogInterface d, int w) {
+                    mCRunApk = null;
+                }
+            })
+            .show();
     }
 
     /** v1.2.111：ROM 轻体检（头部 magic + 总长 + 末 inode 越界检查）。

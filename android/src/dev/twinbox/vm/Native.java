@@ -26,6 +26,12 @@ public final class Native {
     /** v1.2.111：ROM 全量 CRC 验证（后台自愈）。 */
     public static native boolean verifyRom(String romPath);
 
+    /** v1.2.113 M2：列出容器已装 APK（/data/app/ 下，返回 ROM 内路径）。 */
+    public static native String[] listInstalledApks(String romPath);
+
+    /** v1.2.113 M2：从 ROM 提取文件到宿主（dex 扫描用）。 */
+    public static native boolean extractFile(String romPath, String innerPath, String outPath);
+
     /** v1.2.101 M1 并发：独立进程跑容器 B（与 A 并发，结果见 twinvm-live-b.log）。 */
     public static native String stage0Parallel(String romPath, String liveLog);
 }

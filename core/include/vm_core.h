@@ -47,6 +47,8 @@ typedef struct VmRom {
 } VmRom;
 
 int  vm_rom_load(VmRom* rom, const char* path);
+/* v1.2.120：快速装载（列表/提取场景——跳过逐 inode CRC） */
+int  vm_rom_load_quick(VmRom* rom, const char* path);
 /* v1.2.111：运行期向 ROM 追加文件（installApk 引擎层；返回 0 成功） */
 int  vm_rom_install(const char* src_path, const char* rom_path,
                     const char* rom_dir, char* out_name, size_t out_name_sz);

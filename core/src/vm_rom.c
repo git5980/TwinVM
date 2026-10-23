@@ -65,6 +65,22 @@ int vm_rom_load_mem(VmRom* rom, const uint8_t* data, size_t size) {
     return 0;
 }
 
+/* v1.2.120 ★：快速装载（跳过逐 inode CRC）——列表/提取场景专用。
+ * 全量 CRC 是 stage0 装载的职责；列表打开 131MB 逐块 CRC 白耗 1~2s。 */
+int vm_rom_load_quick(VmRom* rom, const char* path) {
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) return -10;
+    struct stat st;
+    if (fstat(fd, &st) != 0 || st.st_size < VM_ROM_HDR_SIZE) { close(fd); return -11; }
+    size_t sz = (size_t)st.st_size;
+    void* mapped = mmap(NULL, sz, PROT_READ, MAP_PRIVATE, fd, 0);
+    close(fd);
+    if (mapped == MAP_FAILED) return -12;
+    int r = vm_rom_load_mem(rom, (const uint8_t*)mapped, sz);
+    if (r != 0) { munmap(mapped, sz); return r; }
+    return 0;   /* ★无 CRC 段 */
+}
+
 int vm_rom_load(VmRom* rom, const char* path) {
     int fd = open(path, O_RDONLY);
     if (fd < 0) return -10;

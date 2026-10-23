@@ -37,6 +37,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
     private LinearLayout mOutRow;       /* v1.2.104：单/双栏容器 */
     private ScrollView mScrollerA, mScrollerB;
     private boolean mDualMode = false;  /* B 启动后切双栏 */
+    private volatile boolean mInstalling = false;   /* v1.2.120：安装防重入 */
     private Handler mUi = new Handler(Looper.getMainLooper());
 
     /* v1.2.51 ★ 日志目录改公共 Documents/TwinVM（TA 要求：文件管理器直接可见，
@@ -109,14 +110,14 @@ public class MainActivity extends Activity implements View.OnClickListener {
         root.setBackgroundColor(0xFF101418);
 
         TextView title = new TextView(this);
-        title.setText("TwinVM · 用户态虚拟机 Stage 2");
+        title.setText("TwinVM · 用户态虚拟机");
         title.setTextColor(0xFFE8EAED);
         title.setTextSize(22);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         root.addView(title);
 
         TextView sub = new TextView(this);
-        sub.setText("Stage 5：App 容器化——一个 App 里的独立虚拟手机（每容器独立 ART）");
+        sub.setText("Stage 5：App 容器化 · M2 已验收 · M3 进行中\n每容器 = 独立进程 + 独立 ART");
         sub.setTextColor(0xFF9AA0A6);
         sub.setTextSize(13);
         sub.setPadding(0, 12, 0, 24);
@@ -125,40 +126,47 @@ public class MainActivity extends Activity implements View.OnClickListener {
         /* v1.2.98 Stage 5：Stage 4.2 已全线贯通（stress-all-pass 复现稳定）
          * ——自检使命完成，主界面精简为纯容器操作。
          * 容器A（hello.dex·stress 体检）+ 容器B（world.dex·独立体检）。 */
-        Button run = makeButton("▶ 运行容器A（hello.dex）");
+        Button run = makeButton("▶ 运行容器A（hello.dex）", true);
         run.setTag("run");
-        root.addView(run);
+        root.addView(run, btnLp());
+        root.addView(spacer(12));
 
-        Button runB = makeButton("▶ 运行容器B（world.dex）");
+        Button runB = makeButton("▶ 运行容器B（world.dex）", true);
         runB.setTag("runB");
-        root.addView(runB);
+        root.addView(runB, btnLp());
+        root.addView(spacer(12));
 
         /* 探测降级为小字（不占主操作流） */
         /* v1.2.113 M2：容器C——已装应用列表（点开选 APK 运行） */
-        Button runC = makeButton("📦 容器C：已装应用（点开选 APK 运行）");
+        Button runC = makeButton("📦 容器C：已装应用（点开选 APK 运行）", true);
         runC.setTag("runC");
         mRunCButton = runC;
-        root.addView(runC);
+        root.addView(runC, btnLp());
+        root.addView(spacer(12));
 
         /* v1.2.109 M2：运行期安装——选任意 APK 装进容器 ROM */
         Button install = makeButton("⬇ 安装 APK 进容器（选文件）");
         install.setTag("install");
-        root.addView(install);
+        root.addView(install, btnLp());
 
         Button probe = makeButton("引擎能力探测（诊断用）");
         probe.setTag("probe");
         probe.setTextSize(12);
-        LinearLayout.LayoutParams lp =
-                new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = 24;
-        root.addView(probe, lp);
+        root.addView(probe, btnLp());
+        root.addView(spacer(16));
 
         mOut = new TextView(this);
         mOut.setTypeface(Typeface.MONOSPACE);
         mOut.setTextSize(12);
         mOut.setTextColor(0xFF7EE1B4);
-        mOut.setPadding(8, 24, 8, 8);
+        /* v1.2.120：输出区圆角卡片（代码块感） */
+        android.graphics.drawable.GradientDrawable ogd =
+                new android.graphics.drawable.GradientDrawable();
+        ogd.setCornerRadius(16f);
+        ogd.setColor(0xFF0B0E12);
+        ogd.setStroke(1, 0xFF22272E);
+        mOut.setBackground(ogd);
+        mOut.setPadding(20, 24, 20, 16);
         mOut.setText("就绪。点上方按钮启动容器：\n"
                 + "每容器 = 独立槽位进程 + 独立 ART + 独立日志\n"
                 + "A: twinvm-live.log · B: twinvm-live-b.log");
@@ -168,6 +176,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
         mOutRow = new LinearLayout(this);
         mOutRow.setOrientation(LinearLayout.HORIZONTAL);
         mScrollerA = new ScrollView(this);
+        mScrollerA.setFillViewport(true);
         mScrollerA.addView(mOut);
         mOutRow.addView(mScrollerA, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.MATCH_PARENT, 1f));
@@ -179,11 +188,29 @@ public class MainActivity extends Activity implements View.OnClickListener {
 
     private static volatile int sTickerGen = 0;   /* v1.2.97：ticker 代际 */
 
-    private Button makeButton(String text) {
+    /** v1.2.120：按钮视觉分级——primary（容器A/B/C 绿边）secondary（工具灰） */
+    private Button makeButton(String text) { return makeButton(text, false); }
+
+    private Button makeButton(String text, boolean primary) {
         Button b = new Button(this);
         b.setText(text);
         b.setTextSize(15);
         b.setGravity(Gravity.CENTER);
+        b.setAllCaps(false);
+        b.setPadding(32, 28, 32, 28);
+        /* 无背景描边卡（GradientDrawable 零依赖圆角） */
+        android.graphics.drawable.GradientDrawable gd =
+                new android.graphics.drawable.GradientDrawable();
+        gd.setCornerRadius(primary ? 24f : 18f);
+        if (primary) {
+            gd.setStroke(3, 0xFF7EE1B4);                 /* 主操作：绿边 */
+            gd.setColor(0xFF16211C);
+        } else {
+            gd.setStroke(2, 0xFF3A4048);                 /* 工具操作：灰边 */
+            gd.setColor(0xFF181C22);
+        }
+        b.setBackground(gd);
+        b.setTextColor(primary ? 0xFF7EE1B4 : 0xFFB8BDC4);
         b.setOnClickListener(this);
         return b;
     }
@@ -296,7 +323,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
         } catch (Throwable ignore) { }
         if (isRunC) {
             /* M2 容器C：串行（与 A 一样的 UI 路径，双栏只留给并发 B） */
-            mOut.setText("\u25b6 容器C 启动…（APK 类路径 /data/app/SampleApp.apk）\n");
+            mOut.setText("\u25b6 容器C 启动…（" + mCRunApk + "）\n");
         } else if (!isRunB) {
             mOut.setText("\u25b6 启动中…\n（正在解析 ROM / 安装拦截器）");
         } else {
@@ -306,9 +333,17 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 mOutB.setTypeface(Typeface.MONOSPACE);
                 mOutB.setTextSize(10);
                 mOutB.setTextColor(0xFFE8B47E);          /* B 栏橙色调区分 */
-                mOutB.setPadding(8, 24, 8, 8);
+                /* v1.2.120：与 A 栏同款圆角卡片（对称） */
+                android.graphics.drawable.GradientDrawable bgd =
+                        new android.graphics.drawable.GradientDrawable();
+                bgd.setCornerRadius(16f);
+                bgd.setColor(0xFF120D08);
+                bgd.setStroke(1, 0xFF2E2418);
+                mOutB.setBackground(bgd);
+                mOutB.setPadding(20, 24, 20, 16);
                 mOutB.setText("[容器B] world.dex · 启动中…\n");
                 mScrollerB = new ScrollView(this);
+                mScrollerB.setFillViewport(true);
                 mScrollerB.addView(mOutB);
                 mOutRow.addView(mScrollerB, new LinearLayout.LayoutParams(
                         0, LinearLayout.LayoutParams.MATCH_PARENT, 1f));
@@ -352,6 +387,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
                     try { Thread.sleep(1500); } catch (InterruptedException ignored) { }
                     for (int i = 0; i < 400; i++) {   /* 最多等 ~13 分钟 */
                         try { Thread.sleep(2000); } catch (InterruptedException ignored) { }
+                        if (!running[0]) break;      /* v1.2.120：主线程已收摊 */
                         /* 门闩检查：本轮的 O_TRUNC 还没发生 → 还在启动期 */
                         long nowM = liveFile.exists() ? liveFile.lastModified() : 0L;
                         if (nowM <= clickMtime) {
@@ -413,7 +449,11 @@ public class MainActivity extends Activity implements View.OnClickListener {
                             + (tail == null || tail.length() == 0
                                ? "（等待引擎输出…）" : tail);
                     mUi.post(new Runnable() {
-                        @Override public void run() { mOut.setText(show); }
+                        @Override public void run() {
+                            mOut.setText(show);
+                            /* v1.2.120：自动滚底——长日志最新行始终可见 */
+                            if (mScrollerA != null) mScrollerA.fullScroll(ScrollView.FOCUS_DOWN);
+                        }
                     });
                     /* v0.8.9：通知栏同步（切后台也能看到进度；用通知免权限） */
                     try {
@@ -535,6 +575,11 @@ public class MainActivity extends Activity implements View.OnClickListener {
         if (requestCode != 2001 || resultCode != RESULT_OK || data == null
                 || data.getData() == null) return;
         final android.net.Uri uri = data.getData();
+        if (mInstalling) {                     /* v1.2.120：防重入（连点双装） */
+            Toast.makeText(this, "上一个安装还在进行…", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        mInstalling = true;
         mOut.setText("⬇ 安装中…（ROM 增量重写，约 1~2 秒）\n" + uri.getLastPathSegment());
         new Thread(new Runnable() {
             @Override public void run() {
@@ -561,6 +606,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 } catch (Throwable t) {
                     msg = "❌ 安装异常: " + t;
                 }
+                mInstalling = false;            /* v1.2.120：防重入解除 */
                 final String m = msg;
                 mUi.post(new Runnable() {
                     @Override public void run() { mOut.setText(m); }
@@ -799,7 +845,24 @@ public class MainActivity extends Activity implements View.OnClickListener {
         } catch (Throwable t) { return false; }
     }
 
-    private String romPath() throws IOException {
+    /** v1.2.120：统一按钮布局参数 + 间隔 */
+    private LinearLayout.LayoutParams btnLp() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = 8;
+        return lp;
+    }
+
+    private View spacer(int h) {
+        View v = new View(this);
+        v.setLayoutParams(new LinearLayout.LayoutParams(1, h));
+        return v;
+    }
+
+    private synchronized String romPath() throws IOException {
+        /* v1.2.120：synchronized——rom-selfheal 线程与 onClick 线程
+         * 冷启动并发首启时的双写竞态（双击场景） */
         File f = new File(getFilesDir(), "demo.rom");
         /* v1.2.109 ★ M2：只在首次落地（不再每次覆盖）——运行期安装进
          * ROM 的 APK 才能留存。清 App 数据即恢复出厂。

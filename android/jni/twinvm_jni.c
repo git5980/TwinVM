@@ -3582,7 +3582,7 @@ Java_dev_twinbox_vm_Native_listInstalledApks(JNIEnv* env, jclass cls, jstring ro
     const char* rom = romPath ? (*env)->GetStringUTFChars(env, romPath, NULL) : NULL;
     if (!rom) return NULL;
     VmRom r;
-    if (vm_rom_load(&r, rom) != 0) {
+    if (vm_rom_load_quick(&r, rom) != 0) {   /* v1.2.120：免 CRC 快路径 */
         (*env)->ReleaseStringUTFChars(env, romPath, rom);
         return NULL;
     }
@@ -3617,7 +3617,7 @@ Java_dev_twinbox_vm_Native_extractFile(JNIEnv* env, jclass cls,
     jboolean ok = 0;
     if (rom && inn && out) {
         VmRom r;
-        if (vm_rom_load(&r, rom) == 0) {
+        if (vm_rom_load_quick(&r, rom) == 0) {   /* v1.2.120：免 CRC */
             const VmRomInode* ni = vm_rom_find(&r, inn);
             if (ni && ni->size > 0) {
                 FILE* f = fopen(out, "wb");

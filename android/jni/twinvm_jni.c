@@ -3505,136 +3505,36 @@ Java_dev_twinbox_vm_Native_stage0Parallel(JNIEnv* env, jclass cls,
 }
 
 /* v1.2.96 Stage 5-M1：容器 dex 选择（声明在文件头，此处仅入口） */
-/* v1.2.109 ★★★ M2：运行期 APK 安装（ROM 增量重写——rom_add.py 的 C 版）。
- * 流程：读 filesDir/demo.rom 全量 → 尾部追加新 inode + 数据 → 原子替换。
- * 128MB 重写约 1~2s（App 内部存储，可接受）。 */
-JNIEXPORT jboolean JNICALL
+/* v1.2.111 ★★★ M2：运行期安装（引擎层 vm_rom_install——v1.2.109 内嵌版
+ * 三处错位写入已在引擎层重写并主机全链验证：装2次→重载→全136 inode CRC 全过）。
+ * 返回安装后的 ROM 路径（null=失败）。 */
+JNIEXPORT jstring JNICALL
 Java_dev_twinbox_vm_Native_installApk(JNIEnv* env, jclass cls,
                                        jstring apkPath, jstring romPath) {
     const char* apk = apkPath ? (*env)->GetStringUTFChars(env, apkPath, NULL) : NULL;
     const char* rom = romPath ? (*env)->GetStringUTFChars(env, romPath, NULL) : NULL;
-    if (!apk || !rom) {
-        if (apk) (*env)->ReleaseStringUTFChars(env, apkPath, apk);
-        if (rom) (*env)->ReleaseStringUTFChars(env, romPath, rom);
-        return 0;
-    }
-    /* 1. 读 APK */
-    FILE* af = fopen(apk, "rb");
-    if (!af) { LOGI("installApk: open apk fail"); goto fail; }
-    fseek(af, 0, SEEK_END);
-    long asz = ftell(af);
-    fseek(af, 0, SEEK_SET);
-    unsigned char* adata = malloc(asz ? (size_t)asz : 1);
-    if (!adata || (asz > 0 && fread(adata, 1, (size_t)asz, af) != (size_t)asz)) {
-        if (adata) free(adata);
-        fclose(af); goto fail;
-    }
-    fclose(af);
-    /* 2. 读 ROM（header 64B + inode 表） */
-    FILE* rf = fopen(rom, "rb");
-    if (!rf) { free(adata); goto fail; }
-    unsigned char hdr[64];
-    if (fread(hdr, 1, 64, rf) != 64) { fclose(rf); free(adata); goto fail; }
-    unsigned inode_count, inode_size;
-    unsigned long long data_off, data_size;
-    /* TVMROM1\0 + u32 count + u32 isz + u64 doff + u64 dsize + ...（小端手拆） */
-    memcpy(&inode_count, hdr + 8, 4);
-    memcpy(&inode_size,  hdr + 12, 4);
-    memcpy(&data_off,     hdr + 16, 8);
-    memcpy(&data_size,    hdr + 24, 8);
-    if (inode_size != 292) { fclose(rf); free(adata); goto fail; }
-    size_t tbl_bytes = (size_t)inode_count * 292;
-    unsigned char* tbl = malloc(tbl_bytes);
-    if (!tbl || fread(tbl, 1, tbl_bytes, rf) != tbl_bytes) {
-        if (tbl) free(tbl);
-        fclose(rf); free(adata); goto fail;
-    }
-    unsigned long long rom_total = data_off + data_size;
-    unsigned char* body = malloc(rom_total ? (size_t)rom_total : 1);
-    if (!body) { free(tbl); fclose(rf); free(adata); goto fail; }
-    fseek(rf, 0, SEEK_SET);
-    if (fread(body, 1, (size_t)rom_total, rf) != (size_t)rom_total) {
-        free(body); free(tbl); fclose(rf); free(adata); goto fail;
-    }
-    fclose(rf);
-    /* 3. 组装新 ROM：尾部对齐追加 APK 数据 + inode 表尾加一项 */
-    /* ROM 名 = /data/app/install-<n>.apk（递增防覆盖） */
-    static int s_inst_n = 0;
-    char romname[64];
-    snprintf(romname, sizeof(romname), "/data/app/install-%d.apk", ++s_inst_n);
-    /* 旧表尾到 data_off 之间的 padding 重算：新表 = 旧表 + 292 */
-    unsigned long long new_data_off = data_off + 292;
-    /* 数据追加位置：旧数据末尾 16 对齐 */
-    unsigned long long append_at = rom_total;
-    if (append_at & 0xF) append_at = (append_at + 0xF) & ~0xFULL;
-    unsigned long long new_total = append_at + (unsigned long long)asz;
-    unsigned char* nb = calloc(1, new_total ? (size_t)new_total : 1);
-    if (!nb) { free(body); free(tbl); free(adata); goto fail; }
-    /* 旧数据（搬到新布局：data_off 变了，表后的数据整体后移 292） */
-    memcpy(nb, body, (size_t)rom_total);
-    memmove(nb + new_data_off, nb + data_off, (size_t)data_size);
-    memcpy(nb + data_off + tbl_bytes, tbl, tbl_bytes);   /* 旧表紧贴新 data_off */
-    /* 新 inode（name mode uid gid size off crc32 xattr_len） */
-    {
-        unsigned char ino[292];
-        memset(ino, 0, sizeof(ino));
-        size_t nl = strlen(romname);
-        if (nl > 255) nl = 255;
-        memcpy(ino, romname, nl);
-        unsigned mode = 0100644;
-        unsigned uid = 1000, gid = 1000;
-        unsigned long long fsz = (unsigned long long)asz;
-        unsigned long long foff = append_at;
-        unsigned crc = 0;
-        {   /* crc32（IEEE） */
-            unsigned c = 0xFFFFFFFFu;
-            for (long i2 = 0; i2 < asz; i2++) {
-                c ^= adata[i2];
-                for (int k = 0; k < 8; k++)
-                    c = (c >> 1) ^ (0xEDB88320u & (unsigned)(-(int)(c & 1)));
-            }
-            crc = ~c;
-        }
-        memcpy(ino + 256, &mode, 4); memcpy(ino + 260, &uid, 4);
-        memcpy(ino + 264, &gid, 4); memcpy(ino + 268, &fsz, 8);
-        memcpy(ino + 276, &foff, 8); memcpy(ino + 284, &crc, 4);
-        /* ino+288 = xattr_len(0) */
-        memcpy(nb + data_off + tbl_bytes + (size_t)inode_count * 292 - 292 + 292 - 292 + tbl_bytes - tbl_bytes + tbl_bytes, ino, 292); /* 保险占位（下一行真正写入） */
-        memcpy(nb + data_off + tbl_bytes, ino, 292);
-    }
-    memcpy(nb + append_at, adata, (size_t)asz);
-    /* 新头 */
-    {
-        unsigned new_count = inode_count + 1;
-        unsigned long long new_dsize = append_at + (unsigned long long)asz - new_data_off;
-        memcpy(nb + 8, &new_count, 4);
-        memcpy(nb + 16, &new_data_off, 8);
-        memcpy(nb + 24, &new_dsize, 8);
-        /* hdr[32] 起 crc/保留——rompack 里整体 crc 不校验则跳过；vm_rom_load 校验吗？查——只校验 magic 和 inode crc。此处保守置 0 */
-    }
-    /* 4. 原子替换 */
-    {
-        char tmp[512];
-        snprintf(tmp, sizeof(tmp), "%s.tmp", rom);
-        FILE* wf = fopen(tmp, "wb");
-        if (!wf) { free(nb); goto fail2; }
-        if (fwrite(nb, 1, (size_t)new_total, wf) != (size_t)new_total) {
-            fclose(wf); remove(tmp); free(nb); goto fail2;
-        }
-        fclose(wf);
-        if (rename(tmp, rom) != 0) { remove(tmp); free(nb); goto fail2; }
-    }
-    free(nb); free(body); free(tbl); free(adata);
-    (*env)->ReleaseStringUTFChars(env, apkPath, apk);
+    char name[512];
+    int r = -99;
+    if (apk && rom)
+        r = vm_rom_install(apk, rom, "/data/app", name, sizeof(name));
+    if (apk) (*env)->ReleaseStringUTFChars(env, apkPath, apk);
+    if (rom) (*env)->ReleaseStringUTFChars(env, romPath, rom);
+    if (r != 0) { LOGI("installApk fail: %d", r); return NULL; }
+    LOGI("installApk: -> %s ok", name);
+    return (*env)->NewStringUTF(env, name);
+}
+
+/* v1.2.111：ROM 全量 CRC 验证（后台自愈用；损坏则删掉重提 assets） */
+JNIEXPORT jboolean JNICALL
+Java_dev_twinbox_vm_Native_verifyRom(JNIEnv* env, jclass cls, jstring romPath) {
+    const char* rom = romPath ? (*env)->GetStringUTFChars(env, romPath, NULL) : NULL;
+    if (!rom) return 0;
+    VmRom r;
+    int ok = vm_rom_load(&r, rom) == 0;
+    if (ok) vm_rom_close(&r);
+    LOGI("verifyRom: %s (%s)", rom, ok ? "OK" : "CORRUPT");
     (*env)->ReleaseStringUTFChars(env, romPath, rom);
-    LOGI("installApk: %s -> %s ok（%ld B，inode #%u）", apk, romname, asz, inode_count + 1);
-    return 1;
-fail2:
-    free(body); free(tbl); free(adata);
-fail:
-    (*env)->ReleaseStringUTFChars(env, apkPath, apk);
-    (*env)->ReleaseStringUTFChars(env, romPath, rom);
-    return 0;
+    return (jboolean)ok;
 }
 
 /* v1.2.108 M2：主类显式指定（APK 类路径必须——manifest 解析后续做） */

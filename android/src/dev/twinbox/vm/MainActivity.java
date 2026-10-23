@@ -69,6 +69,20 @@ public class MainActivity extends Activity implements View.OnClickListener {
          * stopService 触发 system_server 关闭旧 record。 */
         try { stopService(new android.content.Intent(this, RunService.class)); }
         catch (Throwable ignore) { }
+        /* v1.2.111：后台全量 CRC 自愈——损坏的 ROM 自动重提 assets
+         * （v1.2.109 installApk 错位损坏的 ROM 由轻体检+此全量双保险覆盖） */
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    File rom = new File(romPath());
+                    if (rom.exists() && rom.length() > 0
+                            && !Native.verifyRom(rom.getAbsolutePath())) {
+                        rom.delete();
+                        romPath();
+                    }
+                } catch (Throwable ignore) { }
+            }
+        }, "rom-selfheal").start();
 
         super.onCreate(savedInstanceState);
         /* v1.2.69 ★★★ 五版灵异终局定罪：Android 16 cgroup freezer。
@@ -255,7 +269,12 @@ public class MainActivity extends Activity implements View.OnClickListener {
         /* v0.8.9 ★ 实时进度：不再只显示"运行中"干等。
          * 每 400ms 读 live 日志尾部并刷新界面，同时显示已运行秒数与日志大小。 */
         if (mRunLock != null) mRunLock.acquire(10 * 60 * 1000L);   /* v1.2.69：防 CPU 睡眠 */
-        /* v1.2.70 ★：前台服务才是 freezer 豁免正解（WakeLock 不阻止 cgroup 冻结） */
+        /* v1.2.70 ★：前台服务才是 freezer 豁免正解（WakeLock 不阻止 cgroup 冻结）
+         * v1.2.111：拉起前重置标志——服务成功 startForeground 后才允许 stopService
+         * （16:01 闪退真因：ROM 秒败→线程秒收尾→stopService 撞上 4ms 前的
+         * startForegroundService 未兑现 → ForegroundServiceDidNotStartInTime） */
+        RunService.sForeground = false;
+        RunService.sStopRequested = false;
         try {
             android.content.Intent si = new android.content.Intent(this, RunService.class);
             if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(si);
@@ -425,7 +444,10 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 }
                 running[0] = false;
                 if (mRunLock != null) mRunLock.release();   /* v1.2.69：收场释放 */
-                try { stopService(new android.content.Intent(MainActivity.this, RunService.class)); } catch (Throwable ignore) { }
+                RunService.sStopRequested = true;
+                if (RunService.sForeground) {
+                    try { stopService(new android.content.Intent(MainActivity.this, RunService.class)); } catch (Throwable ignore) { }
+                }   /* 未前台的服务由 RunService 在 startForeground 后自行 stopSelf */
                 try {
                     android.app.NotificationManager nm = (android.app.NotificationManager)
                             getSystemService(NOTIFICATION_SERVICE);
@@ -487,13 +509,14 @@ public class MainActivity extends Activity implements View.OnClickListener {
                     out.close(); in.close();
                     /* 2. 确保 ROM 已落地 + native 安装 */
                     final String rom = romPath();
-                    final boolean ok = Native.installApk(pending.getAbsolutePath(), rom);
+                    final String installed = Native.installApk(
+                            pending.getAbsolutePath(), rom);
                     pending.delete();
-                    msg = ok ? "✅ 已安装进容器（/data/app/install-*.apk）\n"
-                              + "容器C 跑它需入口类名——先用 SampleApp 验证链路，"
-                              + "装好的 APK 将在 M3（ActivityThread）启用。\n"
-                              + "ROM 大小: " + new File(rom).length() / 1024 / 1024 + " MB"
-                            : "❌ 安装失败（看日志）";
+                    msg = installed != null
+                        ? "✅ 已安装进容器：" + installed + "\n"
+                          + "（CLI 直跑 M3 启用；先跑容器C 验证链路）\n"
+                          + "ROM 大小: " + new File(rom).length() / 1024 / 1024 + " MB"
+                        : "❌ 安装失败（引擎层日志 installApk fail）";
                 } catch (Throwable t) {
                     msg = "❌ 安装异常: " + t;
                 }
@@ -505,10 +528,47 @@ public class MainActivity extends Activity implements View.OnClickListener {
         }, "apk-installer").start();
     }
 
+    /** v1.2.111：ROM 轻体检（头部 magic + 总长 + 末 inode 越界检查）。
+     * v1.2.109 的 installApk 曾把表写错位——这种损坏靠末 inode 越界检出。 */
+    private boolean romLooksHealthy(File f) {
+        try {
+            java.io.RandomAccessFile raf = new java.io.RandomAccessFile(f, "r");
+            try {
+                byte[] h = new byte[64];
+                if (raf.read(h) != 64) return false;
+                if (h[0] != 'T' || h[1] != 'V' || h[2] != 'M' || h[3] != 'R'
+                        || h[4] != 'O' || h[5] != 'M' || h[6] != '1') return false;
+                long count = (h[8] & 0xFFL) | (h[9] & 0xFFL) << 8
+                        | (h[10] & 0xFFL) << 16 | (h[11] & 0xFFL) << 24;
+                long doff = 0, dsize = 0;
+                for (int i = 0; i < 8; i++) {
+                    doff |= (h[16 + i] & 0xFFL) << (8 * i);
+                    dsize |= (h[24 + i] & 0xFFL) << (8 * i);
+                }
+                if (count <= 0 || count > 4096) return false;
+                if (doff + dsize != f.length()) return false;
+                /* 末 inode 越界检查（garbage 表项的 off/size 巨大——必炸） */
+                byte[] ino = new byte[292];
+                raf.seek(64 + (count - 1) * 292);
+                if (raf.read(ino) != 292) return false;
+                long foff = 0, fsz = 0;
+                for (int i = 0; i < 8; i++) {
+                    foff |= (ino[276 - 256 + i] & 0xFFL) << (8 * i);   /* ino[20..27] */
+                    fsz |= (ino[268 - 256 + i] & 0xFFL) << (8 * i);    /* ino[12..19] */
+                }
+                return foff + fsz <= f.length();
+            } finally { raf.close(); }
+        } catch (Throwable t) { return false; }
+    }
+
     private String romPath() throws IOException {
         File f = new File(getFilesDir(), "demo.rom");
         /* v1.2.109 ★ M2：只在首次落地（不再每次覆盖）——运行期安装进
-         * ROM 的 APK 才能留存。清 App 数据即恢复出厂。 */
+         * ROM 的 APK 才能留存。清 App 数据即恢复出厂。
+         * v1.2.111：轻体检不过 → 当损坏重提（自愈第一步，后台还有全量 CRC） */
+        if (f.exists() && f.length() > 0 && !romLooksHealthy(f)) {
+            f.delete();
+        }
         if (!f.exists() || f.length() == 0) {
             InputStream in = getAssets().open("demo.rom");
             OutputStream o = new FileOutputStream(f);

@@ -47,6 +47,9 @@ typedef struct VmRom {
 } VmRom;
 
 int  vm_rom_load(VmRom* rom, const char* path);
+/* v1.2.111：运行期向 ROM 追加文件（installApk 引擎层；返回 0 成功） */
+int  vm_rom_install(const char* src_path, const char* rom_path,
+                    const char* rom_dir, char* out_name, size_t out_name_sz);
 int  vm_rom_load_mem(VmRom* rom, const uint8_t* data, size_t size);
 void vm_rom_close(VmRom* rom);
 const VmRomInode* vm_rom_find(const VmRom* rom, const char* path);

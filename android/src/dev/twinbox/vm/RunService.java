@@ -17,6 +17,9 @@ import android.os.IBinder;
  */
 public class RunService extends Service {
     private static final String CH = "twinvm_run";
+    /* v1.2.111：FGS 竞态防线——startForeground 成功前禁 stopService */
+    static volatile boolean sForeground = false;
+    static volatile boolean sStopRequested = false;
 
     @Override
     public void onCreate() {
@@ -28,9 +31,11 @@ public class RunService extends Service {
                         CH, "TwinVM 运行", NotificationManager.IMPORTANCE_LOW));
             }
             /* v1.2.110 ★★★：onCreate 就 startForeground（不等 onStartCommand）。
-             * 上个进程遗留的 FGS 账（startForegroundService 未兑现）在进程
-             * 重启连坐时会先查这里——越早清账越安全。 */
+             * v1.2.111：成功后置 sForeground；若此刻已有人请求停（秒败场景），
+             * 自行 stopSelf——绝不给系统留"未兑现"账。 */
             startForeground(2001, buildNote());
+            sForeground = true;
+            if (sStopRequested) stopSelf();
         } catch (Throwable ignore) { }
     }
 
@@ -40,6 +45,8 @@ public class RunService extends Service {
          * ForegroundServiceDidNotStartInTimeException 连坐闪退） */
         try {
             startForeground(2001, buildNote());
+            sForeground = true;
+            if (sStopRequested) stopSelf();
         } catch (Throwable ignore) { }
         return START_NOT_STICKY;
     }

@@ -599,6 +599,8 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 }
                 String str = sb.toString();
                 if (str.startsWith("L") && str.endsWith(";")) {
+                    /* v1.2.115：排除 $ 内部类（MainActivity$1 误报实锤） */
+                    if (str.indexOf('$') >= 0) continue;
                     String cls = str.substring(1, str.length() - 1).replace('/', '.');
                     if (str.endsWith("/Main;")) return cls;   /* 精确 Main 优先 */
                     /* v1.2.114：MainActivity 等含 Main 的也收（排序靠后） */
@@ -642,6 +644,9 @@ public class MainActivity extends Activity implements View.OnClickListener {
                     final String[] suggests = new String[apks.length];
                     for (int i = 0; i < apks.length; i++) {
                         String name = apks[i].substring(apks[i].lastIndexOf('/') + 1);
+                        /* v1.2.115：出厂预装件标注（assets ROM 自带，非 TA 安装） */
+                        boolean preinstalled = name.startsWith("SampleApp")
+                                || name.startsWith("TwinVM-M2-DemoApp");
                         String sugg;
                         if ("/data/app/SampleApp.apk".equals(apks[i])) {
                             sugg = "com.twinvm.sample.Main";   /* 内置映射 */
@@ -652,11 +657,12 @@ public class MainActivity extends Activity implements View.OnClickListener {
                             tmp.delete();
                         }
                         suggests[i] = sugg;
-                        labels[i] = name + "\n    " + (sugg != null ? sugg : "（入口未知）");
+                        labels[i] = (preinstalled ? "[预装] " : "") + name
+                                + "\n    " + (sugg != null ? sugg : "（入口未知）");
                     }
                     mUi.post(new Runnable() { @Override public void run() {
                         new android.app.AlertDialog.Builder(MainActivity.this)
-                            .setTitle("容器已装应用（点选运行）")
+                            .setTitle("容器已装应用（" + apks.length + " 个 · 点选运行）")
                             .setItems(labels, new android.content.DialogInterface
                                     .OnClickListener() {
                                 @Override public void onClick(

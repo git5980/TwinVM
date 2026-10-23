@@ -2899,7 +2899,6 @@ static void snapshot_main_class(void) {
 
 JNIEXPORT jstring JNICALL
 Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstring liveLog) {
-    snapshot_main_class();   /* v1.2.112：fork 前定死类名（诊断行见 live 日志） */
     const char* path;
     if (romPath) {
         path = (*env)->GetStringUTFChars(env, romPath, NULL);
@@ -2944,6 +2943,10 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
             (liveLog || (g_c_out_fd >= 0 && g_c_live_path[0])) ? "on" : "off");
         if (bn > 0) live_write(banner, (size_t)bn);
     }
+    /* v1.2.116：snapshot 挪到 banner 后——首版在 live fd 打开前调用，
+     * [cls] 诊断行写进黑洞（19:42 日志无 [cls] 行实锤）。此时类名决策
+     * 仍是 fork 前（下方 fork 晚于此处）——竞态修复语义不变。 */
+    snapshot_main_class();
     /* v1.2.96 ★★★ Stage 5-M1：串行多容器复位。
      * 案 B 的第一步先走"串行复用"（第二次调用 stage0 = 第二个容器）：
      * 每次进入先复位运行期全局态，保证容器间零残留。

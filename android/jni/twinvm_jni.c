@@ -425,6 +425,7 @@ extern void (*vm_live_log_hook)(const char*, int);
 static char g_dex_path[96] = "/rom/hello.dex";   /* v1.2.100：容器 dex 选择（setDex 写，fork 快照消费） */
 static char g_main_class[64] = "";               /* v1.2.108 M2：主类（setMainClass 写；空=从 dex 文件名推） */
 static char g_cls_snapshot[64] = "";             /* v1.2.112：fork 前定死的类名快照 */
+static int g_boot_mode = 0;                          /* v1.2.118 M3：引导模式（Activity→Bootstrap 反射拉生命周期） */
 static void snapshot_main_class(void);           /* 定义在 stage0 前（依赖 live_write） */
 static void jni_guest_main(const VmRom* rom, int console_fd) {
     /* v1.0.7 ★★ 关闭**继承来的宿主 fd**（这是 guest 槽位的真正入口！）
@@ -548,9 +549,25 @@ static void jni_guest_main(const VmRom* rom, int console_fd) {
              * 112 修的 pargv 只是 /bin/guest 分支与 cmdline 合成源，
              * 这里（fork 后 exec_dyn 的真 gargv）仍是文件名推断 →
              * CNFE 'TwinVM-M2-DemoApp' 三案连发的最终真凶）。 */
+            /* v1.2.118 M3：引导模式 → -cp apk:bootstrap.jar，跑 Bootstrap
+             * （Activity 类名作 argv[4] 传入，Bootstrap 反射拉生命周期）。
+             * 注意：静态表先声明后填充（C 语句顺序）。 */
             static char* gargv[] = { (char*)"dalvikvm", (char*)"-Xverify:none",
                                      (char*)"-cp", g_dex_path,
                                      g_cls_snapshot, NULL };
+            static char* gargv_boot[] = { (char*)"dalvikvm", (char*)"-Xverify:none",
+                                          (char*)"-cp", NULL,
+                                          (char*)"com.twinvm.m3.Bootstrap", NULL };
+            static char s_cp2[192];
+            static char s_act2[64];
+            if (g_boot_mode) {
+                snprintf(s_cp2, sizeof(s_cp2), "%s:/system/framework/bootstrap.jar",
+                         g_dex_path);
+                snprintf(s_act2, sizeof(s_act2), "%s", g_cls_snapshot);
+                gargv_boot[3] = s_cp2;
+                gargv_boot[4] = s_act2;   /* argv[4]=Activity 类名（Bootstrap args[0]） */
+            }
+            char** const use_argv = g_boot_mode ? gargv_boot : gargv;
             static char* genvp[] = {
                 (char*)"BOOTCLASSPATH=/apex/com.android.art/javalib/core-oj.jar:"
                        "/apex/com.android.art/javalib/core-libart.jar:"
@@ -586,7 +603,7 @@ static void jni_guest_main(const VmRom* rom, int console_fd) {
                 NULL };
             vm_log("▶ [4/6] 装载 dalvikvm + linker64…");
             r = vm_loader_exec_dyn(dv->map, dv->size, ld->map, ld->size,
-                                   "/system/bin/dalvikvm", gargv, genvp, &launch);
+                                   "/system/bin/dalvikvm", use_argv, genvp, &launch);
             if (r != 0) { vm_log("exec_dyn 失败: %d —— 退回 /bin/guest", r); r = -1; }
         } else {
             r = vm_loader_prepare(g->map, g->size, &launch);
@@ -1822,7 +1839,19 @@ static void* tvm_tracer_main(void* arg) {
             char* const pargv[] = { (char*)"dalvikvm", (char*)"-Xverify:none",
                                     (char*)"-cp", g_dex_path,
                                     (char*)clsname, NULL };
-            vm_set_exec_cmdline(pargv);
+            /* v1.2.118：boot 模式下 cmdline 也按引导形态合成（/proc/self/cmdline 一致性） */
+            static char s_cp3[192];
+            static char* pargv_boot[] = { (char*)"dalvikvm", (char*)"-Xverify:none",
+                                          (char*)"-cp", NULL,
+                                          (char*)"com.twinvm.m3.Bootstrap",
+                                          (char*)"", NULL };
+            if (g_boot_mode) {
+                snprintf(s_cp3, sizeof(s_cp3), "%s:/system/framework/bootstrap.jar",
+                         g_dex_path);
+                pargv_boot[3] = s_cp3;
+                pargv_boot[5] = g_cls_snapshot;
+            }
+            vm_set_exec_cmdline(g_boot_mode ? pargv_boot : pargv);
         } else {
             vm_set_exec_path("/bin/guest");
             static char* const pargv[] = { (char*)"guest", NULL };
@@ -3624,7 +3653,13 @@ JNIEXPORT void JNICALL
 Java_dev_twinbox_vm_Native_setMainClass(JNIEnv* env, jclass cls, jstring mainClass) {
     const char* p = mainClass ? (*env)->GetStringUTFChars(env, mainClass, NULL) : NULL;
     if (p && p[0]) snprintf(g_main_class, sizeof(g_main_class), "%s", p);
-    LOGI("setMainClass: '%s' -> g_main_class='%s'", p ? p : "(null)", g_main_class);
+    /* v1.2.118 M3：类名含 "Activity" 且非精确 …Main 结尾 → 引导模式
+     * （com.twinvm.demo.CliMain 走直跑；…MainActivity 走 Bootstrap）。
+     * 判据：含 "Activity" 子串。CliMain 不含 Activity 天然不误伤。 */
+    g_boot_mode = (g_main_class[0] != '\0'
+                   && strstr(g_main_class, "Activity") != NULL);
+    LOGI("setMainClass: '%s' -> g_main_class='%s' boot=%d",
+         p ? p : "(null)", g_main_class, g_boot_mode);
     if (p) (*env)->ReleaseStringUTFChars(env, mainClass, p);
 }
 

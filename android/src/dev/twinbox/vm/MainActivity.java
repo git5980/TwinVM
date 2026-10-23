@@ -684,9 +684,11 @@ public class MainActivity extends Activity implements View.OnClickListener {
 
     private void pickApk(final String romInnerPath, final String suggest) {
         mCRunApk = romInnerPath;
-        if (suggest != null && suggest.endsWith(".Main")) {
+        if (suggest != null && (suggest.endsWith(".Main")
+                || suggest.contains("Activity"))) {
+            /* v1.2.118：CliMain 直跑；MainActivity 走 M3 引导（引擎自动判） */
             mCRunClass = suggest;
-            mRunCButton.performClick();   /* 已知入口 → 直接跑 */
+            mRunCButton.performClick();
             return;
         }
         /* 未知/非 Main 入口 → 输入框（预填建议） */

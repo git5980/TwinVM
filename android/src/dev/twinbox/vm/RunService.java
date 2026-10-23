@@ -21,23 +21,36 @@ public class RunService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        if (nm != null && nm.getNotificationChannel(CH) == null) {
-            nm.createNotificationChannel(new NotificationChannel(
-                    CH, "TwinVM 运行", NotificationManager.IMPORTANCE_LOW));
-        }
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm != null && nm.getNotificationChannel(CH) == null) {
+                nm.createNotificationChannel(new NotificationChannel(
+                        CH, "TwinVM 运行", NotificationManager.IMPORTANCE_LOW));
+            }
+            /* v1.2.110 ★★★：onCreate 就 startForeground（不等 onStartCommand）。
+             * 上个进程遗留的 FGS 账（startForegroundService 未兑现）在进程
+             * 重启连坐时会先查这里——越早清账越安全。 */
+            startForeground(2001, buildNote());
+        } catch (Throwable ignore) { }
     }
 
     @Override
     public int onStartCommand(Intent i, int flags, int startId) {
-        Notification n = new Notification.Builder(this, CH)
+        /* v1.2.110：try 包裹（通知限制/权限异常不能炸服务——炸了就是
+         * ForegroundServiceDidNotStartInTimeException 连坐闪退） */
+        try {
+            startForeground(2001, buildNote());
+        } catch (Throwable ignore) { }
+        return START_NOT_STICKY;
+    }
+
+    private Notification buildNote() {
+        return new Notification.Builder(this, CH)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentTitle("TwinVM 虚拟机运行中")
                 .setContentText("guest 执行期间保持活跃（防系统冻结）")
                 .setOngoing(true)
                 .build();
-        startForeground(2001, n);
-        return START_NOT_STICKY;
     }
 
     @Override

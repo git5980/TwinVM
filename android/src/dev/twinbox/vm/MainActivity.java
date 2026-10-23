@@ -63,6 +63,13 @@ public class MainActivity extends Activity implements View.OnClickListener {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        /* v1.2.110 ★：冷启动先清 RunService 遗留账——上个进程被杀时
+         * service 若有未兑现的 startForegroundService，系统会在本进程
+         * attach 后连坐清算（ForegroundServiceDidNotStartInTime）。
+         * stopService 触发 system_server 关闭旧 record。 */
+        try { stopService(new android.content.Intent(this, RunService.class)); }
+        catch (Throwable ignore) { }
+
         super.onCreate(savedInstanceState);
         /* v1.2.69 ★★★ 五版灵异终局定罪：Android 16 cgroup freezer。
          * 病理：无 WakeLock 的 App 在"输出停止"后数秒被系统判定空闲 →

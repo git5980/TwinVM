@@ -555,9 +555,14 @@ static void jni_guest_main(const VmRom* rom, int console_fd) {
             static char* gargv[] = { (char*)"dalvikvm", (char*)"-Xverify:none",
                                      (char*)"-cp", g_dex_path,
                                      g_cls_snapshot, NULL };
+            /* v1.2.121 ★：argv 位次修正——
+             * [4] 必须是主类 Bootstrap（v1.2.118 误把 Activity 名填进主类位，
+             * Bootstrap 被挤掉 → dalvikvm 拿 Activity 名当主类找 → CNFE 斜杠串）。
+             * Activity 名是 Bootstrap 的 args[0] → 落在 [5]。 */
             static char* gargv_boot[] = { (char*)"dalvikvm", (char*)"-Xverify:none",
                                           (char*)"-cp", NULL,
-                                          (char*)"com.twinvm.m3.Bootstrap", NULL };
+                                          (char*)"com.twinvm.m3.Bootstrap",
+                                          NULL, NULL };
             static char s_cp2[192];
             static char s_act2[64];
             if (g_boot_mode) {
@@ -565,7 +570,7 @@ static void jni_guest_main(const VmRom* rom, int console_fd) {
                          g_dex_path);
                 snprintf(s_act2, sizeof(s_act2), "%s", g_cls_snapshot);
                 gargv_boot[3] = s_cp2;
-                gargv_boot[4] = s_act2;   /* argv[4]=Activity 类名（Bootstrap args[0]） */
+                gargv_boot[5] = s_act2;   /* Bootstrap 的 args[0] */
             }
             char** const use_argv = g_boot_mode ? gargv_boot : gargv;
             static char* genvp[] = {

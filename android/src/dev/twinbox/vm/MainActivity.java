@@ -108,6 +108,11 @@ public class MainActivity extends Activity implements View.OnClickListener {
         root.addView(runB);
 
         /* 探测降级为小字（不占主操作流） */
+        /* v1.2.108 M2：容器C——真 APK 类路径（/data/app/SampleApp.apk） */
+        Button runC = makeButton("▶ 运行容器C（SampleApp.apk · M2）");
+        runC.setTag("runC");
+        root.addView(runC);
+
         Button probe = makeButton("引擎能力探测（诊断用）");
         probe.setTag("probe");
         probe.setTextSize(12);
@@ -204,8 +209,12 @@ public class MainActivity extends Activity implements View.OnClickListener {
     public void onClick(final View v) {
         final boolean isRun = "run".equals(v.getTag());
         final boolean isRunB = "runB".equals(v.getTag());
-        /* v1.2.96：容器 B 换 dex+独立日志（串行多容器第一步） */
+        final boolean isRunC = "runC".equals(v.getTag());
+        /* v1.2.96：容器 B 换 dex+独立日志（串行多容器第一步）。
+         * v1.2.108 M2：容器 C = 真 APK 类路径（/data/app/SampleApp.apk）。 */
         if (isRunB) Native.setDex("/rom/world.dex");
+        else if (isRunC) { Native.setDex("/data/app/SampleApp.apk");
+                           Native.setMainClass("com.twinvm.sample.Main"); }
         else if (isRun) Native.setDex("/rom/hello.dex");
         /* v0.8.9 ★ 实时进度：不再只显示"运行中"干等。
          * 每 400ms 读 live 日志尾部并刷新界面，同时显示已运行秒数与日志大小。 */
@@ -216,7 +225,10 @@ public class MainActivity extends Activity implements View.OnClickListener {
             if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(si);
             else startService(si);
         } catch (Throwable ignore) { }
-        if (!isRunB) {
+        if (isRunC) {
+            /* M2 容器C：串行（与 A 一样的 UI 路径，双栏只留给并发 B） */
+            mOut.setText("\u25b6 容器C 启动…（APK 类路径 /data/app/SampleApp.apk）\n");
+        } else if (!isRunB) {
             mOut.setText("\u25b6 启动中…\n（正在解析 ROM / 安装拦截器）");
         } else {
             /* v1.2.104 ★ 切双栏：B 栏创建并接管 B 的显示；A 栏原样继续。 */
@@ -242,7 +254,9 @@ public class MainActivity extends Activity implements View.OnClickListener {
             requestPermissions(new String[]{"android.permission.WRITE_EXTERNAL_STORAGE"}, 100);
         }
         final File liveFile = new File(logsDir(),
-                isRunB ? "twinvm-live-b.log" : "twinvm-live.log");
+                isRunC ? "twinvm-live-c.log"
+              : isRunB ? "twinvm-live-b.log"
+              :          "twinvm-live.log");
         final long t0 = System.currentTimeMillis();
         /* v1.2.97 ★ 修复计时器交替闪烁：旧 ticker 未停，新 ticker 又起
          * ——两个 400ms 循环刷同一个 mOut。静态标志：起 ticker 前先让
@@ -318,7 +332,8 @@ public class MainActivity extends Activity implements View.OnClickListener {
                     String tail = readTail(liveFile, 1600);
                     /* v1.2.97：终点线检测——日志出现 -pass in 后 15 秒视为
                      * 已完成，ticker 提前收摊（结果页由 stage0 返回后翻）。 */
-                    if (tail != null && (tail.contains("-pass in") || tail.contains("槽位退出"))
+                    if (tail != null && (tail.contains("-pass in")
+                            || tail.contains("SampleApp-all-ok") || tail.contains("槽位退出"))
                             && sec > 8) {
                         running[0] = false;
                         break;
@@ -357,7 +372,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
                      * （A 保持原样：并发时 A 先点，B 再点即双活。） */
                     if (isRunB) {
                         result = Native.stage0Parallel(romPath(), liveFile.getAbsolutePath());
-                    } else if (isRun) {
+                    } else if (isRun || isRunC) {
                         result = Native.stage0(romPath(), liveFile.getAbsolutePath());
                     } else {
                         result = Native.probe();

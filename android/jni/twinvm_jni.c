@@ -422,6 +422,7 @@ static void* tvm_inst_thread(void* a) {
 extern void (*vm_live_log_hook)(const char*, int);
 
 static char g_dex_path[96] = "/rom/hello.dex";   /* v1.2.100：容器 dex 选择（setDex 写，fork 快照消费） */
+static char g_main_class[64] = "";               /* v1.2.108 M2：主类（setMainClass 写；空=从 dex 文件名推） */
 static void jni_guest_main(const VmRom* rom, int console_fd) {
     /* v1.0.7 ★★ 关闭**继承来的宿主 fd**（这是 guest 槽位的真正入口！）
      * 真机 v1.0.6 实锤：我在 tvm_tracer_main 的 fork 里加的清理**没生效**，
@@ -1811,9 +1812,13 @@ static void* tvm_tracer_main(void* arg) {
              * 靠 boot.art 预校验，我们没有 dalvik-cache 只能全量冷校验）。
              * VM 沙箱内校验无安全意义（guest 代码本就是我们 ROM 自带），
              * 跳过校验直通执行。同时兜底 90s→240s（首次类装载仍需时间）。 */
-            /* v1.2.96：类名从 dex 路径推（/rom/hello.dex→Hello, world.dex→World） */
+            /* v1.2.96：类名从 dex 路径推（/rom/hello.dex→Hello, world.dex→World）。
+             * v1.2.108 ★ M2：.apk 类路径走 g_main_class（setMainClass 设置，
+             * 默认从文件名推——APK 名推不出入口类，必须显式指定）。 */
             static char clsname[64];
-            {
+            if (g_main_class[0]) {
+                snprintf(clsname, sizeof(clsname), "%s", g_main_class);
+            } else {
                 const char* base = strrchr(g_dex_path, '/');
                 base = base ? base + 1 : g_dex_path;
                 snprintf(clsname, sizeof(clsname), "%s", base);
@@ -3500,6 +3505,14 @@ Java_dev_twinbox_vm_Native_stage0Parallel(JNIEnv* env, jclass cls,
 }
 
 /* v1.2.96 Stage 5-M1：容器 dex 选择（声明在文件头，此处仅入口） */
+/* v1.2.108 M2：主类显式指定（APK 类路径必须——manifest 解析后续做） */
+JNIEXPORT void JNICALL
+Java_dev_twinbox_vm_Native_setMainClass(JNIEnv* env, jclass cls, jstring mainClass) {
+    const char* p = mainClass ? (*env)->GetStringUTFChars(env, mainClass, NULL) : NULL;
+    if (p && p[0]) snprintf(g_main_class, sizeof(g_main_class), "%s", p);
+    if (p) (*env)->ReleaseStringUTFChars(env, mainClass, p);
+}
+
 JNIEXPORT void JNICALL
 Java_dev_twinbox_vm_Native_setDex(JNIEnv* env, jclass cls, jstring dexPath) {
     const char* p = dexPath ? (*env)->GetStringUTFChars(env, dexPath, NULL) : NULL;

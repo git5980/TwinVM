@@ -576,15 +576,16 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 | (b[o + 2] & 0xFF) << 16 | (b[o + 3] & 0xFF) << 24;
     }
 
-    /** dex string 表扫描：找含 "Main" 的类描述符（Lxxx/yyy/Main;）→ 建议入口 */
-    private String suggestMainClass(byte[] dex) {
+    /** v1.2.119：dex 扫描返回多候选（List：精确 Main 优先，Activity 次之，
+     * 最多 3 个——列表点击后弹入口选择：M2 直跑 or M3 引导） */
+    private java.util.ArrayList<String> suggestClasses(byte[] dex) {
+        java.util.ArrayList<String> out = new java.util.ArrayList<String>();
         try {
-            if (dex.length < 0x40) return null;
+            if (dex.length < 0x40) return out;
             int ssz = le32(dex, 0x38), soff = le32(dex, 0x3C);
             if (ssz <= 0 || ssz > 200000 || soff <= 0 || soff + 4L * ssz > dex.length)
-                return null;
-            String best = null;
-            for (int i = 0; i < ssz; i++) {
+                return out;
+            for (int i = 0; i < ssz && out.size() < 3; i++) {
                 int ido = le32(dex, soff + i * 4);
                 if (ido < 0 || ido + 8 > dex.length) continue;
                 int p = ido;
@@ -599,32 +600,35 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 }
                 String str = sb.toString();
                 if (str.startsWith("L") && str.endsWith(";")) {
-                    /* v1.2.115：排除 $ 内部类（MainActivity$1 误报实锤） */
-                    if (str.indexOf('$') >= 0) continue;
+                    if (str.indexOf('$') >= 0) continue;   /* 内部类排除 */
                     String cls = str.substring(1, str.length() - 1).replace('/', '.');
-                    if (str.endsWith("/Main;")) return cls;   /* 精确 Main 优先 */
-                    /* v1.2.114：MainActivity 等含 Main 的也收（排序靠后） */
-                    if (str.indexOf("Main") > 0 && best == null) best = cls;
+                    if (str.endsWith("/Main;")) {        /* 精确 Main 首位 */
+                        out.add(0, cls);
+                    } else if (str.indexOf("Activity") > 0 && !out.contains(cls)) {
+                        out.add(cls);                     /* Activity 次之 */
+                    }
                 }
             }
-            return best;
-        } catch (Throwable t) { return null; }
+        } catch (Throwable t) { }
+        return out;
     }
 
-    /** 从（已提取的）APK 文件读 classes.dex → 扫入口建议 */
-    private String suggestFromApk(File apk) {
+    /** 从（已提取的）APK 文件读 classes.dex → 扫入口候选 */
+    private java.util.ArrayList<String> suggestFromApk(File apk) {
+        java.util.ArrayList<String> out = new java.util.ArrayList<String>();
         try {
             java.util.zip.ZipFile zf = new java.util.zip.ZipFile(apk);
             java.util.zip.ZipEntry e = zf.getEntry("classes.dex");
-            if (e == null) { zf.close(); return null; }
+            if (e == null) { zf.close(); return out; }
             java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
             java.io.InputStream in = zf.getInputStream(e);
             byte[] b = new byte[8192];
             int n;
             while ((n = in.read(b)) > 0) bo.write(b, 0, n);
             in.close(); zf.close();
-            return suggestMainClass(bo.toByteArray());
-        } catch (Throwable t) { return null; }
+            out = suggestClasses(bo.toByteArray());
+        } catch (Throwable t) { }
+        return out;
     }
 
     private void showApkList() {
@@ -641,24 +645,28 @@ public class MainActivity extends Activity implements View.OnClickListener {
                         return;
                     }
                     final String[] labels = new String[apks.length];
-                    final String[] suggests = new String[apks.length];
+                    final java.util.ArrayList<String>[] suggests =
+                            new java.util.ArrayList[apks.length];
                     for (int i = 0; i < apks.length; i++) {
                         String name = apks[i].substring(apks[i].lastIndexOf('/') + 1);
-                        /* v1.2.115：出厂预装件标注（assets ROM 自带，非 TA 安装） */
                         boolean preinstalled = name.startsWith("SampleApp")
                                 || name.startsWith("TwinVM-M2-DemoApp");
-                        String sugg;
+                        java.util.ArrayList<String> sugg;
                         if ("/data/app/SampleApp.apk".equals(apks[i])) {
-                            sugg = "com.twinvm.sample.Main";   /* 内置映射 */
+                            sugg = new java.util.ArrayList<String>();
+                            sugg.add("com.twinvm.sample.Main");   /* 内置映射 */
                         } else {
                             File tmp = new File(getCacheDir(), "scan.apk");
                             sugg = Native.extractFile(rom, apks[i], tmp.getAbsolutePath())
-                                    ? suggestFromApk(tmp) : null;
+                                    ? suggestFromApk(tmp)
+                                    : new java.util.ArrayList<String>();
                             tmp.delete();
                         }
                         suggests[i] = sugg;
+                        StringBuilder sb2 = new StringBuilder();
+                        for (String sg : sugg) sb2.append(sb2.length() > 0 ? " | " : "").append(sg);
                         labels[i] = (preinstalled ? "[预装] " : "") + name
-                                + "\n    " + (sugg != null ? sugg : "（入口未知）");
+                                + "\n    " + (sb2.length() > 0 ? sb2 : "（入口未知）");
                     }
                     mUi.post(new Runnable() { @Override public void run() {
                         new android.app.AlertDialog.Builder(MainActivity.this)
@@ -682,18 +690,52 @@ public class MainActivity extends Activity implements View.OnClickListener {
         }, "apk-lister").start();
     }
 
-    private void pickApk(final String romInnerPath, final String suggest) {
+    private void pickApk(final String romInnerPath,
+                        final java.util.ArrayList<String> sugg) {
         mCRunApk = romInnerPath;
-        if (suggest != null && (suggest.endsWith(".Main")
-                || suggest.contains("Activity"))) {
-            /* v1.2.118：CliMain 直跑；MainActivity 走 M3 引导（引擎自动判） */
-            mCRunClass = suggest;
+        if (sugg == null || sugg.isEmpty()) {
+            /* 无候选 → 输入框 */
+            promptClassInput(romInnerPath, null);
+            return;
+        }
+        if (sugg.size() == 1) {
+            mCRunClass = sugg.get(0);
             mRunCButton.performClick();
             return;
         }
-        /* 未知/非 Main 入口 → 输入框（预填建议） */
+        /* v1.2.119：多候选 → 弹入口选择（标注模式：CLI 直跑 / M3 引导） */
+        final String[] items = new String[sugg.size()];
+        for (int i = 0; i < sugg.size(); i++) {
+            String c = sugg.get(i);
+            items[i] = c + (c.contains("Activity") ? "\n    （M3：Activity 引导）"
+                                                  : "\n    （CLI 直跑）");
+        }
+        new android.app.AlertDialog.Builder(this)
+            .setTitle("选择入口：" + romInnerPath.substring(romInnerPath.lastIndexOf('/') + 1))
+            .setItems(items, new android.content.DialogInterface.OnClickListener() {
+                @Override public void onClick(android.content.DialogInterface d, int which) {
+                    mCRunClass = sugg.get(which);
+                    mRunCButton.performClick();
+                }
+            })
+            .setNegativeButton("取消", new android.content.DialogInterface
+                    .OnClickListener() {
+                @Override public void onClick(android.content.DialogInterface d, int w) {
+                    mCRunApk = null; mCRunClass = null;
+                }
+            })
+            .setOnCancelListener(new android.content.DialogInterface.OnCancelListener() {
+                @Override public void onCancel(android.content.DialogInterface d) {
+                    mCRunApk = null; mCRunClass = null;
+                }
+            })
+            .show();
+    }
+
+    private void promptClassInput(final String romInnerPath, final String prefill) {
+        mCRunApk = romInnerPath;
         final android.widget.EditText et = new android.widget.EditText(this);
-        et.setText(suggest != null ? suggest : "");
+        et.setText(prefill != null ? prefill : "");
         et.setHint("如 com.example.Main（含 main(String[]) 的类）");
         new android.app.AlertDialog.Builder(this)
             .setTitle("入口主类：" + romInnerPath.substring(romInnerPath.lastIndexOf('/') + 1))

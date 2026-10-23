@@ -270,8 +270,15 @@ public class MainActivity extends Activity implements View.OnClickListener {
         /* v1.2.96：容器 B 换 dex+独立日志（串行多容器第一步）。
          * v1.2.113 M2：容器 C = 应用列表 → 点选 APK → 运行。 */
         if (isRunB) Native.setDex("/rom/world.dex");
-        else if (isRunC) { Native.setDex(mCRunApk);
-                           Native.setMainClass(mCRunClass); }
+        else if (isRunC) {
+            if (mCRunApk == null || mCRunClass == null || mCRunClass.length() == 0) {
+                /* v1.2.114：配置不全不跑（mCRunClass 空会 CNFE 文件名推断类） */
+                showApkList();
+                return;
+            }
+            Native.setDex(mCRunApk);
+            Native.setMainClass(mCRunClass);
+        }
         else if (isRun) Native.setDex("/rom/hello.dex");
         /* v0.8.9 ★ 实时进度：不再只显示"运行中"干等。
          * 每 400ms 读 live 日志尾部并刷新界面，同时显示已运行秒数与日志大小。 */
@@ -591,10 +598,11 @@ public class MainActivity extends Activity implements View.OnClickListener {
                     e2++;
                 }
                 String str = sb.toString();
-                if (str.startsWith("L") && str.endsWith(";") && str.indexOf("Main") > 0) {
+                if (str.startsWith("L") && str.endsWith(";")) {
                     String cls = str.substring(1, str.length() - 1).replace('/', '.');
                     if (str.endsWith("/Main;")) return cls;   /* 精确 Main 优先 */
-                    if (best == null) best = cls;
+                    /* v1.2.114：MainActivity 等含 Main 的也收（排序靠后） */
+                    if (str.indexOf("Main") > 0 && best == null) best = cls;
                 }
             }
             return best;
@@ -681,8 +689,8 @@ public class MainActivity extends Activity implements View.OnClickListener {
         et.setHint("如 com.example.Main（含 main(String[]) 的类）");
         new android.app.AlertDialog.Builder(this)
             .setTitle("入口主类：" + romInnerPath.substring(romInnerPath.lastIndexOf('/') + 1))
-            .setMessage("该 APK 无静态 main 入口（Activity 类需 M3）。\n"
-                + "输入要运行的类名（须含 main(String[])）：")
+            .setMessage("该 APK 的入口是 Activity（运行界面需 M3 阶段）。\n"
+                + "可输入含 main(String[]) 的工具类名试跑：")
             .setView(et)
             .setPositiveButton("运行", new android.content.DialogInterface
                     .OnClickListener() {
@@ -696,7 +704,13 @@ public class MainActivity extends Activity implements View.OnClickListener {
             .setNegativeButton("取消", new android.content.DialogInterface
                     .OnClickListener() {
                 @Override public void onClick(android.content.DialogInterface d, int w) {
-                    mCRunApk = null;
+                    mCRunApk = null; mCRunClass = null;
+                }
+            })
+            .setOnCancelListener(new android.content.DialogInterface
+                    .OnCancelListener() {
+                @Override public void onCancel(android.content.DialogInterface d) {
+                    mCRunApk = null; mCRunClass = null;   /* 点外面也清（防残留直跑） */
                 }
             })
             .show();

@@ -20,6 +20,9 @@ public final class Native {
     /** v1.2.108 M2：指定 APK/dex 的入口主类（如 com.twinvm.sample.Main）。 */
     public static native void setMainClass(String mainClass);
 
+    /** v1.2.109 M2：运行期安装 APK 进容器 ROM（返回是否成功）。 */
+    public static native boolean installApk(String apkPath, String romPath);
+
     /** v1.2.101 M1 并发：独立进程跑容器 B（与 A 并发，结果见 twinvm-live-b.log）。 */
     public static native String stage0Parallel(String romPath, String liveLog);
 }

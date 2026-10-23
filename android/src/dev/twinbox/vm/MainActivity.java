@@ -14,6 +14,7 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -113,6 +114,11 @@ public class MainActivity extends Activity implements View.OnClickListener {
         runC.setTag("runC");
         root.addView(runC);
 
+        /* v1.2.109 M2：运行期安装——选任意 APK 装进容器 ROM */
+        Button install = makeButton("⬇ 安装 APK 进容器（选文件）");
+        install.setTag("install");
+        root.addView(install);
+
         Button probe = makeButton("引擎能力探测（诊断用）");
         probe.setTag("probe");
         probe.setTextSize(12);
@@ -210,6 +216,29 @@ public class MainActivity extends Activity implements View.OnClickListener {
         final boolean isRun = "run".equals(v.getTag());
         final boolean isRunB = "runB".equals(v.getTag());
         final boolean isRunC = "runC".equals(v.getTag());
+        /* v1.2.109 M2：安装——拉起系统文件选择器（结果在 onActivityResult） */
+        if ("install".equals(v.getTag())) {
+            try {
+                android.content.Intent it = new android.content.Intent(
+                        android.content.Intent.ACTION_OPEN_DOCUMENT);
+                it.addCategory(android.content.Intent.CATEGORY_OPENABLE);
+                it.setType("application/vnd.android.package-archive");
+                startActivityForResult(it, 2001);
+            } catch (Throwable t) {
+                /* 部分文件管理器不认 mime——退化为任意类型 */
+                try {
+                    android.content.Intent it2 = new android.content.Intent(
+                            android.content.Intent.ACTION_OPEN_DOCUMENT);
+                    it2.addCategory(android.content.Intent.CATEGORY_OPENABLE);
+                    it2.setType("*/*");
+                    startActivityForResult(it2, 2001);
+                } catch (Throwable t2) {
+                    Toast.makeText(this, "文件选择器不可用: " + t2,
+                            Toast.LENGTH_LONG).show();
+                }
+            }
+            return;
+        }
         /* v1.2.96：容器 B 换 dex+独立日志（串行多容器第一步）。
          * v1.2.108 M2：容器 C = 真 APK 类路径（/data/app/SampleApp.apk）。 */
         if (isRunB) Native.setDex("/rom/world.dex");
@@ -428,15 +457,60 @@ public class MainActivity extends Activity implements View.OnClickListener {
     }
 
     /** assets/demo.rom → filesDir（native 侧从文件 mmap 装载）。 */
+    /* v1.2.109 M2：文件选择器回调——拷贝 + 调 native 安装 */
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode,
+                                    android.content.Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != 2001 || resultCode != RESULT_OK || data == null
+                || data.getData() == null) return;
+        final android.net.Uri uri = data.getData();
+        mOut.setText("⬇ 安装中…（ROM 增量重写，约 1~2 秒）\n" + uri.getLastPathSegment());
+        new Thread(new Runnable() {
+            @Override public void run() {
+                String msg;
+                try {
+                    /* 1. 拷到 filesDir/pending.apk（ContentResolver 流） */
+                    File pending = new File(getFilesDir(), "pending.apk");
+                    java.io.InputStream in = getContentResolver().openInputStream(uri);
+                    java.io.OutputStream out = new java.io.FileOutputStream(pending);
+                    byte[] b = new byte[8192];
+                    int n;
+                    while ((n = in.read(b)) > 0) out.write(b, 0, n);
+                    out.close(); in.close();
+                    /* 2. 确保 ROM 已落地 + native 安装 */
+                    final String rom = romPath();
+                    final boolean ok = Native.installApk(pending.getAbsolutePath(), rom);
+                    pending.delete();
+                    msg = ok ? "✅ 已安装进容器（/data/app/install-*.apk）\n"
+                              + "容器C 跑它需入口类名——先用 SampleApp 验证链路，"
+                              + "装好的 APK 将在 M3（ActivityThread）启用。\n"
+                              + "ROM 大小: " + new File(rom).length() / 1024 / 1024 + " MB"
+                            : "❌ 安装失败（看日志）";
+                } catch (Throwable t) {
+                    msg = "❌ 安装异常: " + t;
+                }
+                final String m = msg;
+                mUi.post(new Runnable() {
+                    @Override public void run() { mOut.setText(m); }
+                });
+            }
+        }, "apk-installer").start();
+    }
+
     private String romPath() throws IOException {
         File f = new File(getFilesDir(), "demo.rom");
-        InputStream in = getAssets().open("demo.rom");
-        OutputStream o = new FileOutputStream(f);
-        byte[] b = new byte[8192];
-        int n;
-        while ((n = in.read(b)) > 0) o.write(b, 0, n);
-        o.close();
-        in.close();
+        /* v1.2.109 ★ M2：只在首次落地（不再每次覆盖）——运行期安装进
+         * ROM 的 APK 才能留存。清 App 数据即恢复出厂。 */
+        if (!f.exists() || f.length() == 0) {
+            InputStream in = getAssets().open("demo.rom");
+            OutputStream o = new FileOutputStream(f);
+            byte[] b = new byte[8192];
+            int n;
+            while ((n = in.read(b)) > 0) o.write(b, 0, n);
+            o.close();
+            in.close();
+        }
         return f.getAbsolutePath();
     }
 }

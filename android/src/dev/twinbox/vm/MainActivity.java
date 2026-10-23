@@ -247,7 +247,16 @@ public class MainActivity extends Activity implements View.OnClickListener {
         /* v1.2.97 ★ 修复计时器交替闪烁：旧 ticker 未停，新 ticker 又起
          * ——两个 400ms 循环刷同一个 mOut。静态标志：起 ticker 前先让
          * 上一代退役（计数器代际制）。 */
-        final int gen = ++sTickerGen;
+        /* v1.2.105 ★ 修复"A 栏被 B 停摆"：v1.2.97 的代际制在 B 点击时也
+         * ++sTickerGen——把 A 正在跑的 ticker 挤掉（A 停在最后一帧）。
+         * 修正：代际只由【A/探测的 ticker】维护——B 不启 ticker 也不该
+         * 动计数器。用独立的 boolean 守卫替代全局递增语义。 */
+        final int gen;
+        if (isRunB) {
+            gen = sTickerGen;          /* B：读当前代（自己不启 ticker） */
+        } else {
+            gen = ++sTickerGen;        /* A/探测：新代 */
+        }
         final boolean[] running = new boolean[] { !isRunB };
         if (isRunB) {
             /* v1.2.102：B 的并发路径不启 ticker——A 的表/画面原样保留。

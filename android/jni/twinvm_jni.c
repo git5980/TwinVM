@@ -2903,13 +2903,16 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
         }
     }
 
-    /* v1.2.98b：容器身份横幅——日志第一行可辨（防"看起来都一样"） */
+    /* v1.2.98b：容器身份横幅——日志第一行可辨（防"看起来都一样"）。
+     * v1.2.105：live 判定修——b-runner（C 路径）下 liveLog jstring 为
+     * NULL 但 g_c_live_path 有值（B 的 live=off 假情报曾误导排查）。 */
     {
         char banner[160];
         int bn = snprintf(banner, sizeof(banner),
             "[TwinVM] ══ 容器启动 ══ dex=%s ══ live=%s ══\n",
-            g_dex_path, liveLog ? "on" : "off");
-        if (bn > 0 && g_live_fd >= 0) live_write(banner, (size_t)bn);
+            g_dex_path,
+            (liveLog || (g_c_out_fd >= 0 && g_c_live_path[0])) ? "on" : "off");
+        if (bn > 0) live_write(banner, (size_t)bn);
     }
     /* v1.2.96 ★★★ Stage 5-M1：串行多容器复位。
      * 案 B 的第一步先走"串行复用"（第二次调用 stage0 = 第二个容器）：

@@ -259,13 +259,28 @@ public class MainActivity extends Activity implements View.OnClickListener {
         }
         final boolean[] running = new boolean[] { !isRunB };
         if (isRunB) {
-            /* v1.2.102：B 的并发路径不启 ticker——A 的表/画面原样保留。
-             * B 的完成提示走 live-b.log 的文件监听（下面轻线程）。 */
+            /* v1.2.105 ★ bwatch 误判门闩：启动 1.5s 后读到的可能是【上一轮
+             * 的旧日志】（含旧"槽位退出"）→ 误判 B 完成一去不返（B 栏冻住
+             * 的真凶）。门闩：记录点击时刻的文件 mtime，只有 mtime 变了
+             * （本轮 O_TRUNC 重写发生）才开始判终点；没变就显示"等待启动"。 */
+            final long clickMtime = liveFile.exists() ? liveFile.lastModified() : 0L;
             Thread bwatch = new Thread(new Runnable() {
                 @Override public void run() {
                     try { Thread.sleep(1500); } catch (InterruptedException ignored) { }
                     for (int i = 0; i < 400; i++) {   /* 最多等 ~13 分钟 */
                         try { Thread.sleep(2000); } catch (InterruptedException ignored) { }
+                        /* 门闩检查：本轮的 O_TRUNC 还没发生 → 还在启动期 */
+                        long nowM = liveFile.exists() ? liveFile.lastModified() : 0L;
+                        if (nowM <= clickMtime) {
+                            final int waited = i;
+                            mUi.post(new Runnable() {
+                                @Override public void run() {
+                                    if (mOutB != null) mOutB.setText(
+                                        "[容器B] 等待本轮启动…（" + (waited * 2) + "s）\n");
+                                }
+                            });
+                            continue;
+                        }
                         String tail = readTail(liveFile, 400);
                         if (tail != null && (tail.contains("-pass in") || tail.contains("槽位退出"))) {
                             final String t = tail.length() > 300 ? tail.substring(tail.length()-300) : tail;

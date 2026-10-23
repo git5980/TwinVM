@@ -27,7 +27,11 @@ import java.io.OutputStream;
  */
 public class MainActivity extends Activity implements View.OnClickListener {
 
-    private TextView mOut;
+    private TextView mOut;              /* 单栏模式 = A 的显示（兼容旧路径） */
+    private TextView mOutB;             /* v1.2.104：双栏模式的 B 栏 */
+    private LinearLayout mOutRow;       /* v1.2.104：单/双栏容器 */
+    private ScrollView mScrollerA, mScrollerB;
+    private boolean mDualMode = false;  /* B 启动后切双栏 */
     private Handler mUi = new Handler(Looper.getMainLooper());
 
     /* v1.2.51 ★ 日志目录改公共 Documents/TwinVM（TA 要求：文件管理器直接可见，
@@ -122,9 +126,15 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 + "每容器 = 独立槽位进程 + 独立 ART + 独立日志\n"
                 + "A: twinvm-live.log · B: twinvm-live-b.log");
 
-        ScrollView sc = new ScrollView(this);
-        sc.addView(mOut);
-        root.addView(sc, new LinearLayout.LayoutParams(
+        /* v1.2.104 ★ 双栏显示：A 栏先独立占满；B 启动时切成水平双栏
+         *（单容器=单栏、双容器=双栏——TA 需求）。 */
+        mOutRow = new LinearLayout(this);
+        mOutRow.setOrientation(LinearLayout.HORIZONTAL);
+        mScrollerA = new ScrollView(this);
+        mScrollerA.addView(mOut);
+        mOutRow.addView(mScrollerA, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.MATCH_PARENT, 1f));
+        root.addView(mOutRow, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
 
         setContentView(root);
@@ -209,9 +219,23 @@ public class MainActivity extends Activity implements View.OnClickListener {
         if (!isRunB) {
             mOut.setText("\u25b6 启动中…\n（正在解析 ROM / 安装拦截器）");
         } else {
-            /* v1.2.102：B 并发路径完全旁路 UI 状态机——不覆盖当前显示
-             * （A 的实时画面保住）、不启 ticker、不翻结果页。 */
-            mOut.append("\n[容器B] 已请求启动（独立进程）…\n");
+            /* v1.2.104 ★ 切双栏：B 栏创建并接管 B 的显示；A 栏原样继续。 */
+            if (mOutB == null) {
+                mOutB = new TextView(this);
+                mOutB.setTypeface(Typeface.MONOSPACE);
+                mOutB.setTextSize(10);
+                mOutB.setTextColor(0xFFE8B47E);          /* B 栏橙色调区分 */
+                mOutB.setPadding(8, 24, 8, 8);
+                mOutB.setText("[容器B] world.dex · 启动中…\n");
+                mScrollerB = new ScrollView(this);
+                mScrollerB.addView(mOutB);
+                mOutRow.addView(mScrollerB, new LinearLayout.LayoutParams(
+                        0, LinearLayout.LayoutParams.MATCH_PARENT, 1f));
+                mDualMode = true;
+                /* A 栏字号缩小以适配双栏 */
+                mOut.setTextSize(10);
+            }
+            mOutB.append("[容器B] 已请求启动（独立进程）…\n");
         }
         /* v1.2.51：授权跟手势当场弹（不藏菜单）——首次点"运行"请求存储权限 */
         if (!hasStoragePermission()) {
@@ -235,13 +259,25 @@ public class MainActivity extends Activity implements View.OnClickListener {
                         try { Thread.sleep(2000); } catch (InterruptedException ignored) { }
                         String tail = readTail(liveFile, 400);
                         if (tail != null && (tail.contains("-pass in") || tail.contains("槽位退出"))) {
-                            final String t = tail.length() > 200 ? tail.substring(tail.length()-200) : tail;
+                            final String t = tail.length() > 300 ? tail.substring(tail.length()-300) : tail;
                             mUi.post(new Runnable() {
                                 @Override public void run() {
-                                    mOut.append("\n[容器B 完成]\n" + t + "\n");
+                                    if (mOutB != null) mOutB.append("\n[容器B 完成]\n" + t + "\n");
                                 }
                             });
                             break;
+                        }
+                        /* v1.2.104：B 栏实时尾随（每 2s 刷 3 行——轻量心跳） */
+                        if (tail != null && mOutB != null) {
+                            final String t2 = tail.length() > 400 ? tail.substring(tail.length()-400) : tail;
+                            mUi.post(new Runnable() {
+                                @Override public void run() {
+                                    if (mOutB != null) {
+                                        mOutB.setText("[容器B] live-b 尾随…\n" + t2);
+                                        mScrollerB.fullScroll(ScrollView.FOCUS_DOWN);
+                                    }
+                                }
+                            });
                         }
                     }
                 }

@@ -1939,7 +1939,14 @@ static void* tvm_tracer_main(void* arg) {
             t = waitpid(-1, &st, WNOHANG | __WALL);
             if (t == 0) {
                 if (now_ms - last_stop_ms < 1000 && spin_cnt >= 32) {
-                    continue;                    /* 忙期（≥32停点/s）：满速自旋 */
+                    /* v1.2.104：并发（b-runner）模式下降速——两个 ART + 两个
+                     * tracer 自旋 + 宿主 = 4 核满载，真机实测双容器同时饿死
+                     * 294s（cgroup throttling）。B 容器的 tracer 加 10ms 让步。 */
+                    if (g_c_out_fd >= 0) {
+                        struct timespec ts2 = {0, 10 * 1000 * 1000};
+                        nanosleep(&ts2, NULL);
+                    }
+                    continue;                    /* 忙期（≥32停点/s）：满速自旋（A）/半速（B 并发） */
                 }
                 struct timespec ts = {0, 5 * 1000 * 1000};    /* 5ms */
                 nanosleep(&ts, NULL);

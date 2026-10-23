@@ -444,6 +444,33 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 }
                 running[0] = false;
                 if (mRunLock != null) mRunLock.release();   /* v1.2.69：收场释放 */
+                /* v1.2.112：终点自动存档——live 日志下轮会被 O_TRUNC 冲掉，
+                 * 先在 Documents/TwinVM/archive/ 留带时间戳的快照（TA 的
+                 * "保存到 document 文件夹"） */
+                try {
+                    File src = liveFile;
+                    if (src.exists() && src.length() > 0) {
+                        File adir = new File(src.getParentFile(), "archive");
+                        if (adir.exists() || adir.mkdirs()) {
+                            java.text.SimpleDateFormat sf2 = new java.text.SimpleDateFormat(
+                                    "-yyyyMMdd-HHmmss");
+                            File dst = new File(adir, src.getName().replace(".log", "")
+                                    + sf2.format(new java.util.Date()) + ".log");
+                            java.io.FileInputStream fin = new java.io.FileInputStream(src);
+                            java.io.FileOutputStream fout = new java.io.FileOutputStream(dst);
+                            byte[] bb = new byte[8192];
+                            int nn;
+                            while ((nn = fin.read(bb)) > 0) fout.write(bb, 0, nn);
+                            fout.close(); fin.close();
+                            final String done = "📁 已存档: " + dst.getName();
+                            mUi.post(new Runnable() {
+                                @Override public void run() {
+                                    mOut.append("\n" + done + "\n");
+                                }
+                            });
+                        }
+                    }
+                } catch (Throwable ignore) { }
                 RunService.sStopRequested = true;
                 if (RunService.sForeground) {
                     try { stopService(new android.content.Intent(MainActivity.this, RunService.class)); } catch (Throwable ignore) { }

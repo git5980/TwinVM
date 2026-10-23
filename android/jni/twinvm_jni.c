@@ -303,6 +303,7 @@ static const struct VmPolicyProbe kKnownKilled[] = {
 static int vm_try_syscall(long nr) {
     pid_t p = fork();
     if (p == 0) {
+        prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);   /* v1.2.112：安静死（同 tvm_probe_one） */
         register long x8 __asm__("x8") = nr;
         register long x0 __asm__("x0") = 0, x1 __asm__("x1") = 0, x2 __asm__("x2") = 0;
         __asm__ volatile("svc #0" : "+r"(x0) : "r"(x8), "r"(x1), "r"(x2) : "memory");
@@ -423,6 +424,8 @@ extern void (*vm_live_log_hook)(const char*, int);
 
 static char g_dex_path[96] = "/rom/hello.dex";   /* v1.2.100：容器 dex 选择（setDex 写，fork 快照消费） */
 static char g_main_class[64] = "";               /* v1.2.108 M2：主类（setMainClass 写；空=从 dex 文件名推） */
+static char g_cls_snapshot[64] = "";             /* v1.2.112：fork 前定死的类名快照 */
+static void snapshot_main_class(void);           /* 定义在 stage0 前（依赖 live_write） */
 static void jni_guest_main(const VmRom* rom, int console_fd) {
     /* v1.0.7 ★★ 关闭**继承来的宿主 fd**（这是 guest 槽位的真正入口！）
      * 真机 v1.0.6 实锤：我在 tvm_tracer_main 的 fork 里加的清理**没生效**，
@@ -618,6 +621,10 @@ static void jni_guest_main(const VmRom* rom, int console_fd) {
 static int tvm_probe_one(int nr) {
     pid_t p = fork();
     if (p == 0) {
+        /* v1.2.112：安静死——实测子进程死于 SIGSYS 是设计内结果，
+         * PR_SET_DUMPABLE(0) 让 debuggerd/Logfox 不抓（消 tombstone 噪音，
+         * 16:17 那包 25 连"闪退"实为扫雷子进程的正常死法） */
+        prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);
         alarm(1);                    /* 挂死自兜（有些 syscall 会阻塞） */
         register long x8 __asm__("x8") = nr;
         register long x0 __asm__("x0") = 0, x1 __asm__("x1") = 0, x2 __asm__("x2") = 0;
@@ -1815,20 +1822,11 @@ static void* tvm_tracer_main(void* arg) {
             /* v1.2.96：类名从 dex 路径推（/rom/hello.dex→Hello, world.dex→World）。
              * v1.2.108 ★ M2：.apk 类路径走 g_main_class（setMainClass 设置，
              * 默认从文件名推——APK 名推不出入口类，必须显式指定）。 */
-            static char clsname[64];
-            if (g_main_class[0]) {
-                snprintf(clsname, sizeof(clsname), "%s", g_main_class);
-            } else {
-                const char* base = strrchr(g_dex_path, '/');
-                base = base ? base + 1 : g_dex_path;
-                snprintf(clsname, sizeof(clsname), "%s", base);
-                char* dot = strchr(clsname, '.');
-                if (dot) *dot = 0;
-                if (clsname[0] >= 'a' && clsname[0] <= 'z') clsname[0] -= 32;  /* 首字母大写 */
-            }
-            static char* const pargv[] = { (char*)"dalvikvm", (char*)"-Xverify:none",
-                                           (char*)"-cp", g_dex_path,
-                                           clsname, NULL };
+            /* v1.2.112：用 fork 前的快照（原在此读跨线程全局——实锤竞态） */
+            const char* clsname = g_cls_snapshot;
+            char* const pargv[] = { (char*)"dalvikvm", (char*)"-Xverify:none",
+                                    (char*)"-cp", g_dex_path,
+                                    (char*)clsname, NULL };
             vm_set_exec_cmdline(pargv);
         } else {
             vm_set_exec_path("/bin/guest");
@@ -2873,8 +2871,35 @@ static void* tvm_tracer_main(void* arg) {
 
 #pragma clang optimize on
 
+/* v1.2.112 ★★★ 类名快照：决策挪到 stage0 入口（主进程 dispatch 线程）——
+ * v1.2.111 实锤：决策在 fork 后子进程里读跨线程全局 g_main_class，读到旧值
+ * （'SampleApp' 而非 com.twinvm.sample.Main）。Thread.start 的 happens-before
+ * 保证 dispatch 线程看见 UI 线程的全部写入；子进程只读快照（fork 继承）——
+ * 结构上无条件正确。 */
+static void snapshot_main_class(void) {
+    if (g_main_class[0]) {
+        snprintf(g_cls_snapshot, sizeof(g_cls_snapshot), "%s", g_main_class);
+    } else {
+        const char* base = strrchr(g_dex_path, '/');
+        base = base ? base + 1 : g_dex_path;
+        snprintf(g_cls_snapshot, sizeof(g_cls_snapshot), "%s", base);
+        char* dot = strchr(g_cls_snapshot, '.');
+        if (dot) *dot = 0;
+        if (g_cls_snapshot[0] >= 'a' && g_cls_snapshot[0] <= 'z') g_cls_snapshot[0] -= 32;
+    }
+    {
+        char d[192];
+        int dn = snprintf(d, sizeof(d),
+            "[TwinVM] [cls] 快照：clsname='%s'（g_main_class='%s' dex='%s'）\n",
+            g_cls_snapshot, g_main_class, g_dex_path);
+        LOGI("%s", d);
+        live_write(d, (size_t)dn);
+    }
+}
+
 JNIEXPORT jstring JNICALL
 Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstring liveLog) {
+    snapshot_main_class();   /* v1.2.112：fork 前定死类名（诊断行见 live 日志） */
     const char* path;
     if (romPath) {
         path = (*env)->GetStringUTFChars(env, romPath, NULL);
@@ -3542,6 +3567,7 @@ JNIEXPORT void JNICALL
 Java_dev_twinbox_vm_Native_setMainClass(JNIEnv* env, jclass cls, jstring mainClass) {
     const char* p = mainClass ? (*env)->GetStringUTFChars(env, mainClass, NULL) : NULL;
     if (p && p[0]) snprintf(g_main_class, sizeof(g_main_class), "%s", p);
+    LOGI("setMainClass: '%s' -> g_main_class='%s'", p ? p : "(null)", g_main_class);
     if (p) (*env)->ReleaseStringUTFChars(env, mainClass, p);
 }
 

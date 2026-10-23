@@ -544,18 +544,13 @@ static void jni_guest_main(const VmRom* rom, int console_fd) {
              * 在父进程里，从来没传进来！修：fork 后用 g_dex_path（fork 复制
              * 的是 setDex 已生效的快照 ✓）+ 类名动态推导。
              * （-Xverify:none：冷校验在无 dalvik-cache 下慢千倍，沙箱内无意义） */
-            static char s_clsname[64];
-            {
-                const char* base = strrchr(g_dex_path, '/');
-                base = base ? base + 1 : g_dex_path;
-                snprintf(s_clsname, sizeof(s_clsname), "%s", base);
-                char* dot = strchr(s_clsname, '.');
-                if (dot) *dot = 0;
-                if (s_clsname[0] >= 'a' && s_clsname[0] <= 'z') s_clsname[0] -= 32;
-            }
+            /* v1.2.117 ★★★：改用 g_cls_snapshot（stage0 入口的快照——
+             * 112 修的 pargv 只是 /bin/guest 分支与 cmdline 合成源，
+             * 这里（fork 后 exec_dyn 的真 gargv）仍是文件名推断 →
+             * CNFE 'TwinVM-M2-DemoApp' 三案连发的最终真凶）。 */
             static char* gargv[] = { (char*)"dalvikvm", (char*)"-Xverify:none",
                                      (char*)"-cp", g_dex_path,
-                                     s_clsname, NULL };
+                                     g_cls_snapshot, NULL };
             static char* genvp[] = {
                 (char*)"BOOTCLASSPATH=/apex/com.android.art/javalib/core-oj.jar:"
                        "/apex/com.android.art/javalib/core-libart.jar:"

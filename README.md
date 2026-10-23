@@ -6,6 +6,7 @@
 ```
 容器A：stress-all-pass in 20ms        ← 2026-10-21 Stage 4.2 全线贯通
 容器B：world-all-pass in 601ms        ← 2026-10-23 M1 并发双活（独立进程）
+容器C：DemoApp-Cli-all-ok             ← 2026-10-23 22:47 M2 真 APK 直装跑通
 ```
 
 ## 当前状态：Stage 5 进行中（App 容器化）
@@ -16,8 +17,9 @@
 | 2~3 | exec_dyn 直载 + 真 linker64 自举 | ✅ |
 | 4.2 | **ART 全线贯通**：JNI_CreateJavaVM → 类装载 → Java 字节码执行 → stress 10 项全绿 | ✅ 10-21 |
 | 5-M1 | **多容器**：串行 ✓ + 并发双活 ✓（A 宿主进程 / B 独立 b-runner） | ✅ 10-23 |
-| 5-M2 | APK 直装（真 APK 的 classes.dex 注入容器） | 🚧 进行中 |
-| 5-M3/M4 | binder/ActivityThread 预研 → SurfaceFlinger 像素通道 | ⏳ |
+| 5-M2 | **APK 直装**：运行期安装 + 应用列表 + 真 APK 跑通（DemoApp-Cli-all-ok，10-23） | ✅ |
+| 5-M3 | ActivityThread 模拟（跑标准 Activity APK——Via 靶就绪） | 🚧 下一站 |
+| 5-M4 | binder/SurfaceFlinger 像素通道 | ⏳ |
 
 ## 核心架构（四层）
 

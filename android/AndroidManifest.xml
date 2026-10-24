@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="dev.twinbox.vm"
-    android:versionCode="281"
-    android:versionName="1.2.131">
+    android:versionCode="282"
+    android:versionName="1.2.132">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="27" />
 

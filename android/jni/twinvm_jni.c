@@ -574,12 +574,17 @@ static void jni_guest_main(const VmRom* rom, int console_fd) {
             }
             char** const use_argv = g_boot_mode ? gargv_boot : gargv;
             static char* genvp[] = {
+                /* v1.2.127 ★★★ M3：追加 framework.jar（stub 全 API 面）——
+                 * 11:33 案定罪：defineClass 解析父类 android.app.Activity 时
+                 * BOOTCLASSPATH 无 framework → CNFE。真机由 zygote 提供；
+                 * 我们用 android.jar 的 d8 转换件（5.4MB，stub 方法体）。 */
                 (char*)"BOOTCLASSPATH=/apex/com.android.art/javalib/core-oj.jar:"
                        "/apex/com.android.art/javalib/core-libart.jar:"
                        "/apex/com.android.i18n/javalib/core-icu4j.jar:"
                        "/apex/com.android.art/javalib/okhttp.jar:"
                        "/apex/com.android.art/javalib/bouncycastle.jar:"
-                       "/apex/com.android.art/javalib/apache-xml.jar",
+                       "/apex/com.android.art/javalib/apache-xml.jar:"
+                       "/system/framework/framework.jar",
                 /* v1.2.50 ★ 第六件 core-icu4j（真机 init.environ.rc 形态：第三位）：
                  * 真机 v1.2.49 实锤——libicu_jni 的 JNI 注册 findClass
                  * "com/android/icu/text/TimeZoneNamesNative" 失败（该类定义在

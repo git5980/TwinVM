@@ -850,6 +850,7 @@ static volatile int g_nfail = 0;
  * 才知道是"MAP_FIXED + 非页对齐"、"长度非法"还是"地址越界"。 */
 static unsigned long long g_wargs[6];
 static volatile long g_wargs_nr = -1;
+static volatile int  g_wargs_tid = -1;   /* v1.2.126：wargs 的 tid（多线程互踩防护） */
 static int tvm_fail_watch(long nr) {
     switch (nr) {
         case 222: /* mmap */      case 215: /* munmap */   case 226: /* mprotect */
@@ -2350,6 +2351,7 @@ static void* tvm_tracer_main(void* arg) {
                         for (int z = 0; z < 6; z++)
                             g_wargs[z] = (unsigned long long)info.u.entry.args[z];
                         g_wargs_nr = (long)info.u.entry.nr;
+                        g_wargs_tid = (int)t;
                     }
                     /* v1.2.31：futex 调用留痕（环形，只记 op/uaddr/val，开销可忽略） */
                     if ((long)info.u.entry.nr == 98) {
@@ -2546,15 +2548,18 @@ static void* tvm_tracer_main(void* arg) {
                                                g_wargs_nr == enr ? g_wargs[4] : 0ULL,
                                                g_wargs_nr == enr ? g_wargs[5] : 0ULL);
                                 }
-                                ptrace_log("[fail] nr=%ld → -%ld（首次） "
+                                /* v1.2.126：args 可信度标注（多线程 wargs
+                                 * 互踩防护——tid 匹配才可信） */
+                                int wa = (g_wargs_nr == enr && g_wargs_tid == (int)t);
+                                ptrace_log("[fail] nr=%ld → -%ld（首次） tid=%d %s"
                                            "args=0x%llx,0x%llx,0x%llx,0x%llx,0x%llx,0x%llx",
-                                           enr, eerr,
-                                           g_wargs_nr == enr ? g_wargs[0] : 0ULL,
-                                           g_wargs_nr == enr ? g_wargs[1] : 0ULL,
-                                           g_wargs_nr == enr ? g_wargs[2] : 0ULL,
-                                           g_wargs_nr == enr ? g_wargs[3] : 0ULL,
-                                           g_wargs_nr == enr ? g_wargs[4] : 0ULL,
-                                           g_wargs_nr == enr ? g_wargs[5] : 0ULL);
+                                           enr, eerr, (int)t, wa ? "" : "(args不可信)",
+                                           wa ? g_wargs[0] : 0ULL,
+                                           wa ? g_wargs[1] : 0ULL,
+                                           wa ? g_wargs[2] : 0ULL,
+                                           wa ? g_wargs[3] : 0ULL,
+                                           wa ? g_wargs[4] : 0ULL,
+                                           wa ? g_wargs[5] : 0ULL);
                             }
                         }
                     }

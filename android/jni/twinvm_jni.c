@@ -856,6 +856,7 @@ static volatile int g_nfail = 0;
 static unsigned long long g_wargs[6];
 static volatile long g_wargs_nr = -1;
 static volatile int  g_wargs_tid = -1;   /* v1.2.126：wargs 的 tid（多线程互踩防护） */
+static volatile long g_mprotect_cnt = 0;  /* v1.2.136：mprotect 风暴检测（08:30 卡死案）*/
 static int tvm_fail_watch(long nr) {
     switch (nr) {
         case 222: /* mmap */      case 215: /* munmap */   case 226: /* mprotect */
@@ -1162,6 +1163,16 @@ static int tvm_graceful_check(int kill_it) {
         " —— tracer 代执行优雅关机：SIGTERM→2s→SIGKILL\n",
         (long)(tnow - g_last_real_out),
         g_guest_ticks - g_ticks_at_real_out, peak_eff);
+    /* v1.2.136 ★：mprotect 风暴专报（08:30 卡死案定罪用）——
+     * 区分"真死锁"与"mprotect 页池慢活"（guest 活着但在
+     * 巨量页翻牌海洋里，如 6-dex framework 装载场景） */
+    if (g_mprotect_cnt > 1000) {
+        char mb[192];
+        int mk = snprintf(mb, sizeof(mb),
+            "[TwinVM] [storm] mprotect=%ld 次（装载页翻牌风暴——非死锁，"
+            "是慢活：6-dex framework 的装载开销）\n", (long)g_mprotect_cnt);
+        if (mk > 0) live_write(mb, (size_t)mk);
+    }
     live_write(gb, (size_t)gk);
     if (kill_it) {
         int gst = 0;
@@ -2358,6 +2369,8 @@ static void* tvm_tracer_main(void* arg) {
                         g_wargs_nr = (long)info.u.entry.nr;
                         g_wargs_tid = (int)t;
                     }
+                    /* v1.2.136：mprotect 计数（风暴检测数据源） */
+                    if ((long)info.u.entry.nr == 226) g_mprotect_cnt++;
                     /* v1.2.31：futex 调用留痕（环形，只记 op/uaddr/val，开销可忽略） */
                     if ((long)info.u.entry.nr == 98) {
                         int fi3 = g_futex_idx % TVM_FUTEX_RING;

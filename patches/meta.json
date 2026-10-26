@@ -1,10 +1,10 @@
 {
   "files": [
     {
-      "name": "bootstrap-10262000.bin",
+      "name": "bootstrap-10262316.bin",
       "inner": "/system/framework/bootstrap.jar",
-      "md5": "85619bf4e47ab7ffc485554afb92d8f1",
-      "size": 22736
+      "md5": "e1ead8cd15a3503a504acc1d0d96b3c1",
+      "size": 24120
     },
     {
       "name": "libtvmbridge.so",
@@ -13,6 +13,6 @@
       "size": 8904
     }
   ],
-  "ver": 10262000,
-  "note": "hotfix 10262000"
+  "ver": 10262316,
+  "note": "hotfix 10262316"
 }

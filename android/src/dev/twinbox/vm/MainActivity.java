@@ -153,6 +153,29 @@ public class MainActivity extends Activity implements View.OnClickListener {
         /* v1.2.151 ★ 云端管道：日志直传 + 热更（TA 提议的 DevOps 化） */
         Button cloud = makeButton("☁ 热更新（GitHub 拉补丁）");
         cloud.setTag("cloud");
+        cloud.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override public boolean onLongClick(View v) {
+                final android.widget.EditText et = new android.widget.EditText(MainActivity.this);
+                et.setText("hotfix-v20");
+                et.setHint("GitHub tag 名（如 hotfix-v20）");
+                new android.app.AlertDialog.Builder(MainActivity.this)
+                    .setTitle("自定义热更 tag（CDN 缓存逃生门）")
+                    .setView(et)
+                    .setPositiveButton("用此 tag", new android.content.DialogInterface
+                            .OnClickListener() {
+                        @Override public void onClick(android.content.DialogInterface d, int w) {
+                            String tag = et.getText().toString().trim();
+                            if (tag.length() > 0) {
+                                mPatchTag = tag;
+                                mOut.setText("☁ 已切换热更 tag: " + tag + "\n（下次点 [☁ 热更新] 生效）\n");
+                            }
+                        }
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
+                return true;
+            }
+        });
         root.addView(cloud, btnLp());
 
         Button probe = makeButton("引擎能力探测（诊断用）");
@@ -197,9 +220,19 @@ public class MainActivity extends Activity implements View.OnClickListener {
     /* ═══════ v1.2.151 云端管道 ═══════ */
     /* v1.2.152：热更源改 GitHub 双源（jsdelivr CDN 优先 + raw 备用）
      * ——沙箱容器无公网入站（12:32 不可达案定案），下发走仓库。 */
+    /* v1.2.154：源 3 = jsdelivr @hotfix-v20（tag 引用无 @main 的 12h 缓存
+     * 问题——16:54 案实锤：@main 缓存旧 bin 导致热更装回 v19）。
+     * raw 优先（无缓存）；版本逃生门：长按 [☁] 按钮弹 tag 输入。 */
+    private String mPatchTag = "hotfix-v20";   /* v1.2.154：长按 ☁ 可改 */
+    private String[] patchSrc() {
+        return new String[] {
+            "https://raw.githubusercontent.com/git5980/TwinVM/main/patches/",
+            "https://cdn.jsdelivr.net/gh/git5980/TwinVM@" + mPatchTag + "/patches/",
+        };
+    }
     private static final String[] PATCH_SRC = {
         "https://raw.githubusercontent.com/git5980/TwinVM/main/patches/",
-        "https://cdn.jsdelivr.net/gh/git5980/TwinVM@main/patches/",
+        "https://cdn.jsdelivr.net/gh/git5980/TwinVM@hotfix-v20/patches/",
     };
 
     private interface HttpCb { void on(String err, byte[] data); }
@@ -251,11 +284,11 @@ public class MainActivity extends Activity implements View.OnClickListener {
     }
 
     private void tryPatchSrc(final int si) {
-        if (si >= PATCH_SRC.length) {
+        if (si >= patchSrc().length) {
             mOut.append("❌ 双源都不可达（检查网络——需能访问 GitHub/jsdelivr）\n");
             return;
         }
-        http("GET", PATCH_SRC[si] + "meta.json", null, new HttpCb() {
+        http("GET", patchSrc()[si] + "meta.json", null, new HttpCb() {
             @Override public void on(String err, byte[] data) {
                 if (err != null) {
                     mOut.append("  源" + (si + 1) + " 不可达，换下一个…\n");
@@ -289,7 +322,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
             final String name = f.getString("name");
             final String inner = f.getString("inner");
             final String md5 = f.optString("md5");
-            http("GET", PATCH_SRC[si] + name, null, new HttpCb() {
+            http("GET", patchSrc()[si] + name, null, new HttpCb() {
                 @Override public void on(String err, byte[] data) {
                     if (err != null || data == null) {
                         /* v1.2.153：.jar 403（jsdelivr 扩展名黑名单）→ 自动改试 .bin */

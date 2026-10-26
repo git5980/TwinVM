@@ -198,8 +198,8 @@ public class MainActivity extends Activity implements View.OnClickListener {
     /* v1.2.152：热更源改 GitHub 双源（jsdelivr CDN 优先 + raw 备用）
      * ——沙箱容器无公网入站（12:32 不可达案定案），下发走仓库。 */
     private static final String[] PATCH_SRC = {
-        "https://cdn.jsdelivr.net/gh/git5980/TwinVM@main/patches/",
         "https://raw.githubusercontent.com/git5980/TwinVM/main/patches/",
+        "https://cdn.jsdelivr.net/gh/git5980/TwinVM@main/patches/",
     };
 
     private interface HttpCb { void on(String err, byte[] data); }
@@ -292,6 +292,20 @@ public class MainActivity extends Activity implements View.OnClickListener {
             http("GET", PATCH_SRC[si] + name, null, new HttpCb() {
                 @Override public void on(String err, byte[] data) {
                     if (err != null || data == null) {
+                        /* v1.2.153：.jar 403（jsdelivr 扩展名黑名单）→ 自动改试 .bin */
+                        if (name.endsWith(".jar") && err != null && err.contains("403")) {
+                            try {
+                                org.json.JSONObject f2 =
+                                        new org.json.JSONObject(f.toString());
+                                f2.put("name", name.substring(0, name.length() - 4) + ".bin");
+                                org.json.JSONArray one = new org.json.JSONArray();
+                                one.put(f2);
+                                mOut.append("  ↻ " + name + " 403 → 改试 .bin\n");
+                                downloadApply(one, 0, si);
+                            } catch (Throwable ig2) { }
+                            downloadApply(fs, i + 1, si);
+                            return;
+                        }
                         mOut.append("  ✗ " + name + ": " + err + "\n");
                         downloadApply(fs, i + 1, si);
                         return;

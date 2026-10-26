@@ -148,6 +148,12 @@ public class MainActivity extends Activity implements View.OnClickListener {
         Button install = makeButton("⬇ 安装 APK 进容器（选文件）");
         install.setTag("install");
         root.addView(install, btnLp());
+        root.addView(spacer(8));
+
+        /* v1.2.151 ★ 云端管道：日志直传 + 热更（TA 提议的 DevOps 化） */
+        Button cloud = makeButton("☁ 云端：上传日志 + 检查热更");
+        cloud.setTag("cloud");
+        root.addView(cloud, btnLp());
 
         Button probe = makeButton("引擎能力探测（诊断用）");
         probe.setTag("probe");
@@ -187,6 +193,191 @@ public class MainActivity extends Activity implements View.OnClickListener {
     }
 
     private static volatile int sTickerGen = 0;   /* v1.2.97：ticker 代际 */
+
+    /* ═══════ v1.2.151 云端管道 ═══════ */
+    private static final String CLOUD = "http://47.95.253.127:8765";
+
+    private interface HttpCb { void on(String err, byte[] data); }
+
+    private void http(final String method, final String url,
+                     final byte[] body, final HttpCb cb) {
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    java.net.HttpURLConnection c =
+                            (java.net.HttpURLConnection) new java.net.URL(url)
+                                    .openConnection();
+                    c.setConnectTimeout(8000);
+                    c.setReadTimeout(30000);
+                    c.setRequestMethod(method);
+                    if (body != null) {
+                        c.setDoOutput(true);
+                        java.io.OutputStream os = c.getOutputStream();
+                        os.write(body);
+                        os.close();
+                    }
+                    int code = c.getResponseCode();
+                    java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+                    java.io.InputStream in = code >= 400
+                            ? c.getErrorStream() : c.getInputStream();
+                    if (in != null) {
+                        byte[] b = new byte[8192]; int n;
+                        while ((n = in.read(b)) > 0) bo.write(b, 0, n);
+                        in.close();
+                    }
+                    c.disconnect();
+                    final byte[] data = bo.toByteArray();
+                    final String err = code >= 400 ? ("HTTP " + code) : null;
+                    mUi.post(new Runnable() {
+                        @Override public void run() { cb.on(err, data); }
+                    });
+                } catch (final Throwable t) {
+                    mUi.post(new Runnable() {
+                        @Override public void run() { cb.on(String.valueOf(t), null); }
+                    });
+                }
+            }
+        }, "tvm-http").start();
+    }
+
+    private void doCloud() {
+        mOut.setText("☁ 连接 " + CLOUD + " …\n");
+        http("GET", CLOUD + "/healthz", null, new HttpCb() {
+            @Override public void on(String err, byte[] data) {
+                if (err != null) {
+                    mOut.setText("❌ 服务器不可达: " + err + "\n"
+                            + "（检查手机网络/或服务器离线——可稍后重试）\n");
+                    return;
+                }
+                mOut.append("✅ 服务器连通\n☁ 上传日志…\n");
+                uploadAllLogs(new Runnable() {
+                    @Override public void run() { checkPatches(); }
+                });
+            }
+        });
+    }
+
+    private void uploadAllLogs(final Runnable done) {
+        final File[] files;
+        try {
+            File logs = logsDir();
+            final File arch = new File(logs, "archive");
+            java.util.ArrayList<File> all = new java.util.ArrayList<File>();
+            File[] a = logs.listFiles();
+            if (a != null) for (File f : a) if (f.isFile() && f.getName().endsWith(".log")) all.add(f);
+            File[] b2 = arch.listFiles();
+            if (b2 != null) for (File f : b2) if (f.isFile()) all.add(f);
+            files = all.toArray(new File[0]);
+        } catch (Throwable t) {
+            mOut.append("❌ 日志目录读取失败: " + t + "\n");
+            done.run();
+            return;
+        }
+        if (files.length == 0) { mOut.append("（无日志可传）\n"); done.run(); return; }
+        uploadNext(files, 0, done);
+    }
+
+    private void uploadNext(final File[] files, final int i, final Runnable done) {
+        if (i >= files.length) { done.run(); return; }
+        final File f = files[i];
+        try {
+            byte[] body = new byte[(int) f.length()];
+            java.io.FileInputStream fi = new java.io.FileInputStream(f);
+            int off = 0;
+            while (off < body.length) {
+                int n = fi.read(body, off, body.length - off);
+                if (n < 0) break;
+                off += n;
+            }
+            fi.close();
+            http("POST", CLOUD + "/log/" + f.getName(), body, new HttpCb() {
+                @Override public void on(String err, byte[] data) {
+                    mOut.append(err == null
+                            ? "  ✓ " + f.getName() + " (" + body.length / 1024 + "KB)\n"
+                            : "  ✗ " + f.getName() + ": " + err + "\n");
+                    uploadNext(files, i + 1, done);
+                }
+            });
+        } catch (final Throwable t) {
+            mOut.append("  ✗ " + f.getName() + ": " + t + "\n");
+            uploadNext(files, i + 1, done);
+        }
+    }
+
+    private void checkPatches() {
+        mOut.append("☁ 检查热更补丁…\n");
+        http("GET", CLOUD + "/patch/meta", null, new HttpCb() {
+            @Override public void on(String err, byte[] data) {
+                if (err != null) {
+                    mOut.append("❌ 补丁清单失败: " + err + "\n—— 日志已上传 ✓（下次容器跑完可再点我）\n");
+                    return;
+                }
+                try {
+                    org.json.JSONObject meta = new org.json.JSONObject(new String(data));
+                    org.json.JSONArray fs = meta.getJSONArray("files");
+                    if (fs.length() == 0) {
+                        mOut.append("✅ 无可用补丁（服务器 patches/ 空）\n—— 日志上传完成 ✓\n");
+                        return;
+                    }
+                    downloadAndApply(fs, 0);
+                } catch (Throwable t) {
+                    mOut.append("清单解析失败: " + t + "\n");
+                }
+            }
+        });
+    }
+
+    private void downloadAndApply(final org.json.JSONArray fs, final int i) {
+        if (i >= fs.length()) {
+            mOut.append("—— 云端流程完成 ✓（新补丁下次启动容器生效）\n");
+            return;
+        }
+        try {
+            final org.json.JSONObject f = fs.getJSONObject(i);
+            final String name = f.getString("name");
+            final String inner = f.getString("inner");
+            final String md5 = f.getString("md5");
+            http("GET", CLOUD + f.getString("url"), null, new HttpCb() {
+                @Override public void on(String err, byte[] data) {
+                    if (err != null || data == null) {
+                        mOut.append("  ✗ 下载 " + name + ": " + err + "\n");
+                        downloadAndApply(fs, i + 1);
+                        return;
+                    }
+                    /* md5 校验 */
+                    try {
+                        java.security.MessageDigest md =
+                                java.security.MessageDigest.getInstance("MD5");
+                        md.update(data);
+                        StringBuilder sb = new StringBuilder();
+                        for (byte b2 : md.digest()) sb.append(String.format("%02x", b2));
+                        if (!sb.toString().equals(md5)) {
+                            mOut.append("  ✗ " + name + " md5 不符（跳过）\n");
+                            downloadAndApply(fs, i + 1);
+                            return;
+                        }
+                    } catch (Throwable ignore) { }
+                    try {
+                        File tmp = new File(getCacheDir(), name);
+                        java.io.FileOutputStream fo = new java.io.FileOutputStream(tmp);
+                        fo.write(data);
+                        fo.close();
+                        final String rom = romPath();
+                        int rc = Native.replaceRomFile(rom, inner, tmp.getAbsolutePath());
+                        mOut.append(rc == 0
+                                ? "  ✓ 热更 " + name + " (" + data.length / 1024 + "KB) 应用成功\n"
+                                : "  ✗ 热更 " + name + " rc=" + rc + "（-9=目标不存在）\n");
+                        tmp.delete();
+                    } catch (final Throwable t) {
+                        mOut.append("  ✗ 热更 " + name + ": " + t + "\n");
+                    }
+                    downloadAndApply(fs, i + 1);
+                }
+            });
+        } catch (Throwable t) {
+            mOut.append("补丁项处理失败: " + t + "\n");
+        }
+    }
 
     /** v1.2.120：按钮视觉分级——primary（容器A/B/C 绿边）secondary（工具灰） */
     private Button makeButton(String text) { return makeButton(text, false); }
@@ -266,6 +457,8 @@ public class MainActivity extends Activity implements View.OnClickListener {
 
     @Override
     public void onClick(final View v) {
+        /* v1.2.151：云端管道（连通→上传日志→热更→汇总） */
+        if ("cloud".equals(v.getTag())) { doCloud(); return; }
         final boolean isRun = "run".equals(v.getTag());
         final boolean isRunB = "runB".equals(v.getTag());
         final boolean isRunC = "runC".equals(v.getTag());

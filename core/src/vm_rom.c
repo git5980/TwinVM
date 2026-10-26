@@ -274,3 +274,107 @@ int vm_rom_install(const char* src_path, const char* rom_path,
     free(nb); free(body); free(sdata);
     return 0;
 }
+
+/* ────────────────────────────────────────────────────────────────
+ * v1.2.151 ★ vm_rom_replace：热更新——替换 ROM 内指定 inode 的数据
+ * （云端补丁通道：bootstrap.jar / libtvmbridge.so 免重装升级）
+ * 布局与 rom_add.py / vm_rom_install 相同。返回 0 成功。
+ * ──────────────────────────────────────────────────────────────── */
+int vm_rom_replace(const char* src_path, const char* rom_path,
+                   const char* inner_path) {
+    FILE* sf = fopen(src_path, "rb");
+    if (!sf) return -1;
+    fseek(sf, 0, SEEK_END);
+    long ssz = ftell(sf); fseek(sf, 0, SEEK_SET);
+    if (ssz <= 0) { fclose(sf); return -2; }
+    uint8_t* sdata = (uint8_t*)malloc((size_t)ssz);
+    if (!sdata || fread(sdata, 1, (size_t)ssz, sf) != (size_t)ssz) {
+        free(sdata); fclose(sf); return -3;
+    }
+    fclose(sf);
+
+    FILE* rf = fopen(rom_path, "rb");
+    if (!rf) { free(sdata); return -4; }
+    fseek(rf, 0, SEEK_END);
+    long rsz = ftell(rf); fseek(rf, 0, SEEK_SET);
+    if (rsz < VM_ROM_HDR_SIZE) { fclose(rf); free(sdata); return -5; }
+    uint8_t* body = (uint8_t*)malloc((size_t)rsz);
+    if (!body || fread(body, 1, (size_t)rsz, rf) != (size_t)rsz) {
+        if (body) free(body); fclose(rf); free(sdata); return -6;
+    }
+    fclose(rf);
+    if (memcmp(body, VM_ROM_MAGIC, 7) != 0) { free(body); free(sdata); return -7; }
+    uint32_t count = rd32(body + 8), isize = rd32(body + 12);
+    uint64_t data_off = rd64(body + 0x10);
+    if (isize != VM_ROM_INODE_DISK_SIZE || count == 0) {
+        free(body); free(sdata); return -8;
+    }
+    /* 找目标 inode（保持其余原样，仅换数据+账本） */
+    int hit = -1;
+    for (uint32_t i = 0; i < count; i++) {
+        const char* nm = (const char*)(body + VM_ROM_HDR_SIZE + (size_t)i * isize);
+        if (strncmp(nm, inner_path, VM_MAX_PATH) == 0) { hit = (int)i; break; }
+    }
+    if (hit < 0) { free(body); free(sdata); return -9; }   /* 不存在 → 用 install 追加 */
+
+    /* 重建：头64 + 表(count*292) + 数据（按 inode 顺序串接，16 对齐） */
+    size_t tbl = (size_t)count * VM_ROM_INODE_DISK_SIZE;
+    size_t new_doff = VM_ROM_HDR_SIZE + tbl;
+    /* 数据区总长 = Σ(对齐后 size) */
+    uint64_t total = 0;
+    for (uint32_t i = 0; i < count; i++) {
+        uint64_t sz = rd64(body + VM_ROM_HDR_SIZE + (size_t)i * isize + 268);
+        if ((int)i == hit) sz = (uint64_t)ssz;
+        total += (sz + 15) & ~(uint64_t)0xF;
+    }
+    uint8_t* nb = (uint8_t*)calloc(1, (size_t)(new_doff + total));
+    if (!nb) { free(body); free(sdata); return -10; }
+    memcpy(nb, body, VM_ROM_HDR_SIZE + tbl);          /* 头+表原样（数据 off 再 patch）*/
+    uint64_t cur = new_doff;
+    for (uint32_t i = 0; i < count; i++) {
+        uint8_t* ino = nb + VM_ROM_HDR_SIZE + (size_t)i * isize;
+        uint64_t osz = rd64(ino + 268);
+        const uint8_t* src;
+        uint32_t ncrc;
+        if ((int)i == hit) {
+            src = sdata; osz = (uint64_t)ssz;
+            uint32_t c2 = 0;
+            c2 = (uint32_t)rom_crc32_cat(0, sdata, (size_t)ssz);
+            ncrc = c2;
+            memcpy(ino + 268, &osz, 8);
+            memcpy(ino + 276, &cur, 8);
+            memcpy(ino + 284, &ncrc, 4);
+            memcpy(nb + (size_t)cur, sdata, (size_t)ssz);
+        } else {
+            uint64_t ooff = rd64(ino + 276);
+            src = body + (size_t)ooff;
+            memcpy(ino + 276, &cur, 8);
+            memcpy(nb + (size_t)cur, src, (size_t)osz);
+        }
+        cur += (osz + 15) & ~(uint64_t)0xF;
+    }
+    uint64_t new_dsize = cur - new_doff;
+    memcpy(nb + 0x10, &new_doff, 8);
+    memcpy(nb + 0x18, &new_dsize, 8);
+    { /* file_crc = 依序 blob 拼接 crc（rom_add.py 语义） */
+        uint32_t run = 0;
+        for (uint32_t i = 0; i < count; i++) {
+            const uint8_t* ino2 = nb + VM_ROM_HDR_SIZE + (size_t)i * isize;
+            uint64_t off2 = rd64(ino2 + 276), len2 = rd64(ino2 + 268);
+            run = rom_crc32_cat(run, nb + (size_t)off2, (size_t)len2);
+        }
+        memcpy(nb + 0x20, &run, 4);
+    }
+    { /* 原子落盘 */
+        char tmp[512];
+        snprintf(tmp, sizeof(tmp), "%s.tmp", rom_path);
+        FILE* wf = fopen(tmp, "wb");
+        if (!wf) { free(nb); free(body); free(sdata); return -11; }
+        size_t wt = fwrite(nb, 1, (size_t)(new_doff + total), wf);
+        fclose(wf);
+        if (wt != (size_t)(new_doff + total)) { remove(tmp); free(nb); free(body); free(sdata); return -12; }
+        if (rename(tmp, rom_path) != 0) { remove(tmp); free(nb); free(body); free(sdata); return -13; }
+    }
+    free(nb); free(body); free(sdata);
+    return 0;
+}

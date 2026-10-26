@@ -2989,12 +2989,38 @@ Java_dev_twinbox_vm_Native_stage0(JNIEnv* env, jclass cls, jstring romPath, jstr
      * v1.2.105：live 判定修——b-runner（C 路径）下 liveLog jstring 为
      * NULL 但 g_c_live_path 有值（B 的 live=off 假情报曾误导排查）。 */
     {
-        char banner[160];
+        char banner[224];
         int bn = snprintf(banner, sizeof(banner),
             "[TwinVM] ══ 容器启动 ══ dex=%s ══ live=%s ══\n",
             g_dex_path,
             (liveLog || (g_c_out_fd >= 0 && g_c_live_path[0])) ? "on" : "off");
         if (bn > 0) live_write(banner, (size_t)bn);
+        /* v1.2.151 ★★★【ROM 版本指纹行】：日志第二行打 ROM md5 前 8 位
+         * ——11:40 案终极武器：每次日志一眼对上 ROM 世代（彻底终结
+         * "装错版本 vs 指纹静默炸"的诊断盲区）。md5 用 ROM 头 64B+
+         * 采样中段/尾段（避免 172MB 全算太慢）。 */
+        if (path && path[0] == '/') {
+            FILE* rf2 = fopen(path, "rb");
+            if (rf2) {
+                unsigned char head[64], mid[64], tail[64];
+                size_t h2 = fread(head, 1, 64, rf2);
+                fseek(rf2, 0, SEEK_END);
+                long rsz2 = ftell(rf2);
+                fseek(rf2, rsz2 / 2, SEEK_SET);
+                size_t m2 = fread(mid, 1, 64, rf2);
+                fseek(rf2, rsz2 > 64 ? rsz2 - 64 : 0, SEEK_SET);
+                size_t t2 = fread(tail, 1, 64, rf2);
+                fclose(rf2);
+                uint32_t hc = 5381;   /* djb2 快指纹（诊断用，非密码学） */
+                for (int i2 = 0; i2 < (int)h2; i2++) hc = hc * 33 + head[i2];
+                for (int i2 = 0; i2 < (int)m2; i2++) hc = hc * 33 + mid[i2];
+                for (int i2 = 0; i2 < (int)t2; i2++) hc = hc * 33 + tail[i2];
+                char vb[96];
+                int vn = snprintf(vb, sizeof(vb),
+                    "[TwinVM] rom-指纹=%08x 大小=%ld\n", hc, rsz2);
+                if (vn > 0) live_write(vb, (size_t)vn);
+            }
+        }
     }
     /* v1.2.116：snapshot 挪到 banner 后——首版在 live fd 打开前调用，
      * [cls] 诊断行写进黑洞（19:42 日志无 [cls] 行实锤）。此时类名决策
@@ -3662,6 +3688,23 @@ Java_dev_twinbox_vm_Native_extractFile(JNIEnv* env, jclass cls,
     if (inn) (*env)->ReleaseStringUTFChars(env, innerPath, inn);
     if (out) (*env)->ReleaseStringUTFChars(env, outPath, out);
     return ok;
+}
+
+/* v1.2.151 ★ 云端热更：替换 ROM 内文件（vm_rom_replace 薄包装） */
+JNIEXPORT jint JNICALL
+Java_dev_twinbox_vm_Native_replaceRomFile(JNIEnv* env, jclass cls,
+                                           jstring romPath, jstring innerPath,
+                                           jstring localFile) {
+    const char* rom = romPath ? (*env)->GetStringUTFChars(env, romPath, NULL) : NULL;
+    const char* inn = innerPath ? (*env)->GetStringUTFChars(env, innerPath, NULL) : NULL;
+    const char* loc = localFile ? (*env)->GetStringUTFChars(env, localFile, NULL) : NULL;
+    int rc = -99;
+    if (rom && inn && loc) rc = vm_rom_replace(loc, rom, inn);
+    if (rom) (*env)->ReleaseStringUTFChars(env, romPath, rom);
+    if (inn) (*env)->ReleaseStringUTFChars(env, innerPath, inn);
+    if (loc) (*env)->ReleaseStringUTFChars(env, localFile, loc);
+    LOGI("replaceRomFile: %s rc=%d", inn ? inn : "?", rc);
+    return rc;
 }
 
 /* v1.2.111：ROM 全量 CRC 验证（后台自愈用；损坏则删掉重提 assets） */

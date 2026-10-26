@@ -26,6 +26,9 @@ public final class Native {
     /** v1.2.111：ROM 全量 CRC 验证（后台自愈）。 */
     public static native boolean verifyRom(String romPath);
 
+    /** v1.2.151 云端热更：替换 ROM 内文件（返回 0 成功；-9=不存在）。 */
+    public static native int replaceRomFile(String romPath, String innerPath, String localFile);
+
     /** v1.2.113 M2：列出容器已装 APK（/data/app/ 下，返回 ROM 内路径）。 */
     public static native String[] listInstalledApks(String romPath);
 

@@ -110,7 +110,7 @@ if [ ! -f twinvm.keystore ]; then
         -keyalg RSA -keysize 2048 -validity 10000 -alias twinvm \
         -dname "CN=TwinVM" >/dev/null 2>&1
 fi
-OUTAPK=TwinVM-Stage4-v1.2.147.apk
+OUTAPK=TwinVM-Stage4-v1.2.148.apk
 "$BT/apksigner" sign --ks twinvm.keystore --ks-pass pass:twinvm123 \
     --out "$OUTAPK" "$OUT/twinvm.aligned.apk"
 

@@ -584,7 +584,8 @@ static void jni_guest_main(const VmRom* rom, int console_fd) {
                        "/apex/com.android.art/javalib/okhttp.jar:"
                        "/apex/com.android.art/javalib/bouncycastle.jar:"
                        "/apex/com.android.art/javalib/apache-xml.jar:"
-                       "/system/framework/framework.jar",
+                       "/system/framework/framework.jar:"
+                       "/system/framework/bootstrap.jar",   /* v1.2.147：Bootstrap 进 boot——hidden API 豁免（oplus RefClass 案的根源：-cp 调用方被灰名单拦截） */
                 /* v1.2.50 ★ 第六件 core-icu4j（真机 init.environ.rc 形态：第三位）：
                  * 真机 v1.2.49 实锤——libicu_jni 的 JNI 注册 findClass
                  * "com/android/icu/text/TimeZoneNamesNative" 失败（该类定义在

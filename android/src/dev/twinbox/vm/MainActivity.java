@@ -864,6 +864,49 @@ public class MainActivity extends Activity implements View.OnClickListener {
         /* v1.2.120：synchronized——rom-selfheal 线程与 onClick 线程
          * 冷启动并发首启时的双写竞态（双击场景） */
         File f = new File(getFilesDir(), "demo.rom");
+        /* v1.2.149 ★★★【ROM 版本指纹】：filesDir 的 ROM 与 assets 的
+         * 不是同一个（APK 升级不替换 filesDir）——10:07 案实锤：
+         * TA 装了 v148 但跑的还是 v145 的 bootstrap（旧 ROM 持续服役）。
+         * 修：落地时写 md5 指纹；启动时 assets 指纹不一致 → 重新落地。
+         * （运行期安装的 APK 会丢——恢复出厂语义，可接受：引擎升级优先） */
+        File fp = new File(getFilesDir(), "demo.rom.fp");
+        try {
+            java.security.MessageDigest md =
+                    java.security.MessageDigest.getInstance("MD5");
+            java.io.InputStream ain = getAssets().open("demo.rom");
+            byte[] ab = new byte[65536];
+            int an;
+            while ((an = ain.read(ab)) > 0) md.update(ab, 0, an);
+            ain.close();
+            StringBuilder asb = new StringBuilder();
+            for (byte b3 : md.digest()) asb.append(String.format("%02x", b3));
+            String want = asb.toString();
+            String have = null;
+            if (fp.exists()) {
+                java.io.BufferedReader br = new java.io.BufferedReader(
+                        new java.io.FileReader(fp));
+                have = br.readLine();
+                br.close();
+            }
+            if (f.exists() && !want.equals(have)) {
+                f.delete();               /* 引擎已升级——换新 ROM */
+            }
+            if (!f.exists() || f.length() == 0) {
+                /* 落地 + 写指纹 */
+                InputStream in = getAssets().open("demo.rom");
+                OutputStream o = new FileOutputStream(f);
+                byte[] b = new byte[8192];
+                int n;
+                while ((n = in.read(b)) > 0) o.write(b, 0, n);
+                o.close(); in.close();
+                java.io.FileWriter fw2 = new java.io.FileWriter(fp);
+                fw2.write(want);
+                fw2.close();
+            }
+            return f.getAbsolutePath();
+        } catch (Throwable t) {
+            /* 指纹机制任何异常 → 退回旧逻辑（下方） */
+        }
         /* v1.2.109 ★ M2：只在首次落地（不再每次覆盖）——运行期安装进
          * ROM 的 APK 才能留存。清 App 数据即恢复出厂。
          * v1.2.111：轻体检不过 → 当损坏重提（自愈第一步，后台还有全量 CRC） */

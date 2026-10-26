@@ -3,8 +3,8 @@
     {
       "name": "bootstrap.bin",
       "inner": "/system/framework/bootstrap.jar",
-      "md5": "5b118ea0165c6dfcb80810d48b5e37ad",
-      "size": 20860
+      "md5": "6b6459d97c6a048b9f79c39d766e60f3",
+      "size": 20856
     },
     {
       "name": "libtvmbridge.so",
@@ -13,6 +13,6 @@
       "size": 8904
     }
   ],
-  "ver": 1,
+  "ver": 2,
   "note": "M3 hotfix channel"
 }

@@ -220,20 +220,16 @@ public class MainActivity extends Activity implements View.OnClickListener {
     /* ═══════ v1.2.151 云端管道 ═══════ */
     /* v1.2.152：热更源改 GitHub 双源（jsdelivr CDN 优先 + raw 备用）
      * ——沙箱容器无公网入站（12:32 不可达案定案），下发走仓库。 */
-    /* v1.2.154：源 3 = jsdelivr @hotfix-v20（tag 引用无 @main 的 12h 缓存
-     * 问题——16:54 案实锤：@main 缓存旧 bin 导致热更装回 v19）。
-     * raw 优先（无缓存）；版本逃生门：长按 [☁] 按钮弹 tag 输入。 */
-    private String mPatchTag = "hotfix-v20";   /* v1.2.154：长按 ☁ 可改 */
+    /* v1.2.155：jsdelivr 源 = @hotfix-latest（固定 tag 名，我每次发布
+     * force-move 到新 commit——实测 CDN 拿到新内容 ✓）。
+     * raw 优先；长按 [☁] 可改 tag（逃生门）。 */
+    private String mPatchTag = "hotfix-latest";
     private String[] patchSrc() {
         return new String[] {
             "https://raw.githubusercontent.com/git5980/TwinVM/main/patches/",
             "https://cdn.jsdelivr.net/gh/git5980/TwinVM@" + mPatchTag + "/patches/",
         };
     }
-    private static final String[] PATCH_SRC = {
-        "https://raw.githubusercontent.com/git5980/TwinVM/main/patches/",
-        "https://cdn.jsdelivr.net/gh/git5980/TwinVM@hotfix-v20/patches/",
-    };
 
     private interface HttpCb { void on(String err, byte[] data); }
 

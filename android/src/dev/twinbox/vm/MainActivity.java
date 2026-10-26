@@ -905,7 +905,15 @@ public class MainActivity extends Activity implements View.OnClickListener {
             }
             return f.getAbsolutePath();
         } catch (Throwable t) {
-            /* 指纹机制任何异常 → 退回旧逻辑（下方） */
+            /* v1.2.150：指纹机制异常【必须可见】（149 的静默吞导致
+             * 诊断盲区——10:59 日志无法区分"没装 149"还是"指纹静默炸"） */
+            android.util.Log.w("TwinVM", "ROM 指纹异常", t);
+            try {
+                java.io.File ef = new java.io.File(getFilesDir(), "rom_fp_err.txt");
+                java.io.FileWriter fe = new java.io.FileWriter(ef, true);
+                fe.write(String.valueOf(t) + "\n");
+                fe.close();
+            } catch (Throwable ignore) { }
         }
         /* v1.2.109 ★ M2：只在首次落地（不再每次覆盖）——运行期安装进
          * ROM 的 APK 才能留存。清 App 数据即恢复出厂。

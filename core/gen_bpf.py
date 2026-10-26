@@ -15,7 +15,7 @@ X86 = {
     'sigaltstack': 131, 'tgkill': 234, 'sched_yield': 24, 'prctl': 157,
     'epoll_create1': 291, 'epoll_ctl': 233, 'epoll_wait': 232, 'epoll_pwait': 281, 'socket': 41,
     'connect': 42,
-    'pipe2': 317, 'getcpu': 309, 'sched_setaffinity': 203, 'set_robust_list': 273, 'rseq': 334,
+    'pipe2': 317, 'getcpu': 309, 'sched_setaffinity': 203, 'set_robust_list': 273, 'rseq': 334, 'pkey_alloc': 289, 'pkey_free': 290,
     'nanosleep': 35, 'clock_nanosleep': 230,
     'membarrier': 324, 'prlimit64': 302, 'gettimeofday': 96, 'userfaultfd': 323,
     'process_vm_readv': 310, 'process_vm_writev': 311,
@@ -33,7 +33,7 @@ ARM = {
     'getrandom': 278, 'prctl': 167, 'madvise': 233, 'rt_sigreturn': 139,
     'nanosleep': 101, 'clock_nanosleep': 115,
     'epoll_create1': 20, 'epoll_ctl': 21, 'epoll_pwait': 22, 'pread64': 67,
-    'pipe2': 59, 'getcpu': 168, 'sched_setaffinity': 122, 'set_robust_list': 99, 'rseq': 293,
+    'pipe2': 59, 'getcpu': 168, 'sched_setaffinity': 122, 'set_robust_list': 99, 'rseq': 293, 'pkey_alloc': 289, 'pkey_free': 290,
     'socket': 198, 'connect': 203,
     'membarrier': 283, 'prlimit64': 261, 'gettimeofday': 169, 'userfaultfd': 282,
     'process_vm_readv': 270, 'process_vm_writev': 271,
@@ -56,6 +56,11 @@ ARM = {
 #   * exit_group：guest 关机
 ALWAYS = ['exit_group', 'rt_sigreturn', 'exit', 'gettid', 'getpid', 'getppid', 'brk', 'munmap',
           'mprotect', 'mremap', 'madvise', 'futex', 'set_tid_address',
+          # v1.2.156 ★ Android16 ART/bionic 新增号（02:21 tombstone 案）：
+          # guest ART（uffd-gc）启动即 pkey_alloc(289)/pkey_free(290)，
+          # bionic 注册 __rseq(293)。不在白名单 → TRAP 直发再拦 → 信号
+          # 挂起错投 → SYS_SECCOMP 直杀（tombstone 30/31 双证）。
+          'pkey_alloc', 'pkey_free', 'rseq',
           # v0.7.83 **移除 prctl**：guest（bionic）会用它安装自己的 seccomp 过滤器
           #   prctl(PR_SET_NO_NEW_PRIVS=38) + prctl(PR_SET_SECCOMP=22, MODE_FILTER, &fprog)
           # 真机实锤（v0.7.81/82）：放行它 → guest 那层策略（KILL_PROCESS）装到我们

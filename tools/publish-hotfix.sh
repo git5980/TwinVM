@@ -27,4 +27,5 @@ PYEOF
 git add patches/
 git commit -q -m "热更 ${VER}：bootstrap-${VER}.bin（版本化文件名=新缓存键）"
 git tag -f "${TAG}"
+git tag -f hotfix-latest   # 滚动 latest（v1.2.155 App 默认源）
 echo "已提交并打 tag: ${TAG}"

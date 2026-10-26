@@ -1,0 +1,18 @@
+{
+  "files": [
+    {
+      "name": "bootstrap.jar",
+      "inner": "/system/framework/bootstrap.jar",
+      "md5": "5b118ea0165c6dfcb80810d48b5e37ad",
+      "size": 20860
+    },
+    {
+      "name": "libtvmbridge.so",
+      "inner": "/system/lib64/libtvmbridge.so",
+      "md5": "0360306a7d331aeeaa03bad18f1978a7",
+      "size": 8904
+    }
+  ],
+  "ver": 1,
+  "note": "M3 hotfix channel"
+}

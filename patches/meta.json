@@ -1,7 +1,7 @@
 {
   "files": [
     {
-      "name": "bootstrap.jar",
+      "name": "bootstrap.bin",
       "inner": "/system/framework/bootstrap.jar",
       "md5": "5b118ea0165c6dfcb80810d48b5e37ad",
       "size": 20860

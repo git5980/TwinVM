@@ -1,9 +1,9 @@
 {
   "files": [
     {
-      "name": "bootstrap-10271906.bin",
+      "name": "bootstrap-10271928.bin",
       "inner": "/system/framework/bootstrap.jar",
-      "md5": "6dba562b3249fef0af6a535deed78f82",
+      "md5": "3bf36abaca155e4cfbd1c1f412d6eb78",
       "size": 30492
     },
     {
@@ -13,6 +13,6 @@
       "size": 15520
     }
   ],
-  "ver": 10271906,
-  "note": "hotfix 10271906"
+  "ver": 10271928,
+  "note": "hotfix 10271928"
 }

@@ -68,7 +68,6 @@ public class MainActivity extends Activity implements View.OnClickListener {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        mUpToken = getSharedPreferences("tvm", 0).getString("up_token", null);   /* v1.2.162 */
         /* v1.2.110 ★：冷启动先清 RunService 遗留账——上个进程被杀时
          * service 若有未兑现的 startForegroundService，系统会在本进程
          * attach 后连坐清算（ForegroundServiceDidNotStartInTime）。
@@ -157,32 +156,19 @@ public class MainActivity extends Activity implements View.OnClickListener {
         cloud.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 final android.widget.EditText et = new android.widget.EditText(MainActivity.this);
-                et.setText(mPatchTag);
-                /* v1.2.162：token 输入（日志上行用） */
-                final android.widget.EditText etTok = new android.widget.EditText(MainActivity.this);
-                etTok.setText(mUpToken == null ? "" : mUpToken);
-                etTok.setHint("GitHub PAT（日志上行用，可留空）");
-                android.widget.LinearLayout lay = new android.widget.LinearLayout(MainActivity.this);
-                lay.setOrientation(android.widget.LinearLayout.VERTICAL);
-                lay.addView(et);
-                lay.addView(etTok);
+                et.setText("hotfix-v20");
                 et.setHint("GitHub tag 名（如 hotfix-v20）");
                 new android.app.AlertDialog.Builder(MainActivity.this)
-                    .setTitle("热更 tag + 日志上行 token")
-                    .setView(lay)
+                    .setTitle("自定义热更 tag（CDN 缓存逃生门）")
+                    .setView(et)
                     .setPositiveButton("用此 tag", new android.content.DialogInterface
                             .OnClickListener() {
                         @Override public void onClick(android.content.DialogInterface d, int w) {
                             String tag = et.getText().toString().trim();
-                            if (tag.length() > 0) mPatchTag = tag;
-                            String tok = etTok.getText().toString().trim();
-                            if (tok.length() > 0) {
-                                mUpToken = tok;
-                                getSharedPreferences("tvm", 0).edit()
-                                        .putString("up_token", tok).apply();
+                            if (tag.length() > 0) {
+                                mPatchTag = tag;
+                                mOut.setText("☁ 已切换热更 tag: " + tag + "\n（下次点 [☁ 热更新] 生效）\n");
                             }
-                            mOut.setText("☁ tag: " + mPatchTag
-                                    + "\n⇧ 日志上行: " + (mUpToken != null ? "已配置" : "未配置") + "\n");
                         }
                     })
                     .setNegativeButton("取消", null)
@@ -238,8 +224,6 @@ public class MainActivity extends Activity implements View.OnClickListener {
      * force-move 到新 commit——实测 CDN 拿到新内容 ✓）。
      * raw 优先；长按 [☁] 可改 tag（逃生门）。 */
     private String mPatchTag = "hotfix-latest";
-    /* v1.2.162 ★ 日志上行通道：App 把 live 日志 PUT 到 GitHub logs 分支 */
-    private String mUpToken = null;  /* onCreate 恢复 */
     private String[] patchSrc() {
         return new String[] {
             "https://raw.githubusercontent.com/git5980/TwinVM/main/patches/",
@@ -288,62 +272,6 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 }
             }
         }, "tvm-http").start();
-    }
-
-    /* v1.2.162 ★ 日志上行：PUT 到 GitHub logs 分支
-     * API：PUT api.github.com/repos/git5980/TwinVM/contents/logs/<name>
-     * body: {message, content(base64), branch:"logs"}（需先 GET 旧 sha） */
-    private void uploadLog(final File f, final String name) {
-        if (mUpToken == null || !f.exists() || f.length() == 0) return;
-        new Thread(new Runnable() {
-            @Override public void run() {
-                try {
-                    byte[] raw = java.nio.file.Files.readAllBytes(f.toPath());
-                    /* >1MB 截尾（GitHub 限 100MB，但 API 快） */
-                    if (raw.length > 900_000) {
-                        byte[] cut = new byte[900_000];
-                        System.arraycopy(raw, raw.length - 900_000, cut, 0, 900_000);
-                        raw = cut;
-                    }
-                    String b64 = android.util.Base64.encodeToString(raw, android.util.Base64.NO_WRAP);
-                    String api = "https://api.github.com/repos/git5980/TwinVM/contents/logs/" + name;
-                    /* 先 GET 旧 sha（404=新建） */
-                    String[] sha = { null };
-                    try {
-                        java.net.HttpURLConnection g = (java.net.HttpURLConnection) new java.net.URL(api + "?ref=logs").openConnection();
-                        g.setRequestProperty("Authorization", "token " + mUpToken);
-                        g.setRequestProperty("Accept", "application/vnd.github+json");
-                        int gc = g.getResponseCode();
-                        if (gc == 200) {
-                            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
-                            java.io.InputStream in = g.getInputStream();
-                            byte[] b = new byte[8192]; int n;
-                            while ((n = in.read(b)) > 0) bo.write(b, 0, n);
-                            in.close();
-                            org.json.JSONObject jo = new org.json.JSONObject(new String(bo.toByteArray()));
-                            sha[0] = jo.getString("sha");
-                        }
-                        g.disconnect();
-                    } catch (Throwable ignore) { }
-                    org.json.JSONObject put = new org.json.JSONObject();
-                    put.put("message", "live-log: " + name + " " + System.currentTimeMillis());
-                    put.put("content", b64);
-                    put.put("branch", "logs");
-                    if (sha[0] != null) put.put("sha", sha[0]);
-                    java.net.HttpURLConnection p = (java.net.HttpURLConnection) new java.net.URL(api).openConnection();
-                    p.setRequestMethod("PUT");
-                    p.setRequestProperty("Authorization", "token " + mUpToken);
-                    p.setRequestProperty("Accept", "application/vnd.github+json");
-                    p.setDoOutput(true);
-                    p.getOutputStream().write(put.toString().getBytes("UTF-8"));
-                    int pc = p.getResponseCode();
-                    p.disconnect();
-                    android.util.Log.i("TwinVM", "日志上行 " + name + " → HTTP " + pc);
-                } catch (final Throwable t) {
-                    android.util.Log.w("TwinVM", "日志上行失败: " + t);
-                }
-            }
-        }, "tvm-logup").start();
     }
 
     private void doCloud() {
@@ -757,9 +685,6 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 }
                 running[0] = false;
                 if (mRunLock != null) mRunLock.release();   /* v1.2.69：收场释放 */
-                /* v1.2.162 ★ 日志上行（TA 提议的免传 zip）：
-                 * 容器终点自动 PUT live 日志到 GitHub logs 分支 */
-                try { uploadLog(liveFile, liveFile.getName()); } catch (Throwable ignore) { }
                 /* v1.2.112：终点自动存档——live 日志下轮会被 O_TRUNC 冲掉，
                  * 先在 Documents/TwinVM/archive/ 留带时间戳的快照（TA 的
                  * "保存到 document 文件夹"） */

@@ -168,6 +168,28 @@ public class Bootstrap {
 
     static void runFlow(String cls) throws Exception {
         System.out.println("M3-flow: 进入 runFlow（looper 线程就绪）");
+        /* v19 ★★★：APK 必须进"真 classloader"——BootClassLoader 里只有 BCP，
+         * 之前用 DexFile.loadClass(MainActivity, BootCL) 强定义主类，
+         * 但内部类 MainActivity$1 走 loader 路径找不到（13:31 案：
+         * NoClassDefFoundError: Lcom/twinvm/demo/MainActivity$1）。
+         * DexClassLoader(apk) 让主类与内部类共享同一条 dex 路径。 */
+        String apkPath = null;
+        try {
+            String cp = System.getProperty("java.class.path", "");
+            for (String p : cp.split(":")) {
+                if (p.endsWith(".apk")) { apkPath = p; break; }
+            }
+        } catch (Throwable ignore) { }
+        if (apkPath == null) apkPath = "/data/app/TwinVM-M2-DemoApp.apk";
+        ClassLoader apkLoader = null;
+        try {
+            apkLoader = new dalvik.system.DexClassLoader(
+                    apkPath, null, null, Bootstrap.class.getClassLoader());
+            Thread.currentThread().setContextClassLoader(apkLoader);
+            System.out.println("M3-apk: DexClassLoader ✓ " + apkPath);
+        } catch (Throwable apkT) {
+            System.out.println("M3-apk: DexClassLoader 失败（回退旧路）= " + apkT);
+        }
         /* v18：普通 Thread + 手动 Looper.prepare（HandlerThread 类链绕开） */
         try {
             ClassLoader cl = Bootstrap.class.getClassLoader();
@@ -235,8 +257,8 @@ public class Bootstrap {
             java.lang.reflect.Method lm = df.getClass().getMethod(
                     "loadClass", new Class[]{String.class, ClassLoader.class});
             Class<?> dc2 = (Class<?>) lm.invoke(df, new Object[]{
-                    "com.twinvm.demo.MainActivity",
-                    Bootstrap.class.getClassLoader()});
+                    "com.twinvm.demo.CliMain",   /* v19：诊断别预定义业务主类 */
+                    apkLoader != null ? apkLoader : Bootstrap.class.getClassLoader()});
             System.out.println("M3-dexfile: loadClass = " + dc2);
             /* v5：mCookie 透视（cookie[0]=oat，后续=dex 句柄——长度=数量） */
             try {
@@ -260,8 +282,42 @@ public class Bootstrap {
                     + ": " + cc.getMessage());
         }
         try {
-            Class<?> ac = Class.forName(cls);
-            System.out.println("M3-Bootstrap: 类装载 OK：" + ac.getName());
+            Class<?> ac = null;
+            if (apkLoader != null) {
+                try {
+                    ac = Class.forName(cls, true, apkLoader);
+                } catch (Throwable le) {
+                    System.out.println("M3-apk: apkLoader 装载失败 = " + le);
+                }
+            }
+            if (ac == null) {
+                /* v19 兜底：DexFile 预定义 cls 及其内部类（同一 loader 注册，
+                 * 绕开 BootClassLoader 路径里没有 APK 的限制） */
+                try {
+                    Object df2 = Class.forName("dalvik.system.DexFile")
+                            .getConstructor(java.io.File.class)
+                            .newInstance(new java.io.File(apkPath));
+                    java.lang.reflect.Method lm2 = df2.getClass().getMethod(
+                            "loadClass", String.class, ClassLoader.class);
+                    @SuppressWarnings("unchecked")
+                    java.util.Enumeration<String> en2 = (java.util.Enumeration<String>)
+                            df2.getClass().getMethod("entries").invoke(df2);
+                    ClassLoader bcl = Bootstrap.class.getClassLoader();
+                    int pre = 0;
+                    while (en2.hasMoreElements()) {
+                        String nm = en2.nextElement();
+                        if (nm.equals(cls) || nm.startsWith(cls + "$")) {
+                            try { lm2.invoke(df2, nm, bcl); pre++; } catch (Throwable ig) { }
+                        }
+                    }
+                    System.out.println("M3-apk: DexFile 兜底预定义 " + pre + " 个类");
+                } catch (Throwable t3) {
+                    System.out.println("M3-apk: DexFile 兜底失败 = " + t3);
+                }
+                ac = Class.forName(cls);
+            }
+            System.out.println("M3-Bootstrap: 类装载 OK：" + ac.getName()
+                    + "（loader=" + ac.getClassLoader() + "）");
             Object act;
             boolean attached = false;
             try {
@@ -464,7 +520,46 @@ public class Bootstrap {
      * 不需要 system_server 协商），拿真 ActivityThread + 真
      * ContextImpl（ext/Instrumentation/LoadedApk 全初始化）。 */
     /** v21：手工填 attach 的五字段（不再调 Activity.attach——它碰 Process） */
+    /** v19：ATM 单例提前预填——v94b 用 Activity 上下文构造 FrameLayout 会触发
+     * Activity 主题初始化（ColorOS onApplyThemeResource → setTaskDescription →
+     * ActivityClient → ATM.getService → IServiceManager on null）。
+     * 在 attachBaseContext 之前把 ATM Singleton.mInstance 填成 Proxy，整条链短路。 */
+    static void prefillAtmEarly() {
+        try {
+            Class<?> atmC = Class.forName("android.app.ActivityTaskManager");
+            java.lang.reflect.Field sgnF = null;
+            for (java.lang.reflect.Field fx : atmC.getDeclaredFields())
+                if (java.lang.reflect.Modifier.isStatic(fx.getModifiers())
+                        && fx.getType().getName().equals("android.util.Singleton")) {
+                    sgnF = fx; break;
+                }
+            if (sgnF == null) { System.out.println("M3-man: v19 ATM 字段未找到"); return; }
+            sgnF.setAccessible(true);
+            Object singleton = sgnF.get(null);
+            Class<?> sgC = Class.forName("android.util.Singleton");
+            java.lang.reflect.Field miF = sgC.getDeclaredField("mInstance");
+            miF.setAccessible(true);
+            Class<?> itf = Class.forName("android.app.IActivityTaskManager");
+            Object proxy = java.lang.reflect.Proxy.newProxyInstance(
+                    itf.getClassLoader(), new Class<?>[]{ itf },
+                    new java.lang.reflect.InvocationHandler() {
+                        @Override public Object invoke(Object p2, java.lang.reflect.Method m2, Object[] a2) {
+                            String n = m2.getName();
+                            if (n.equals("toString")) return "TVM-ATM";
+                            if (n.equals("hashCode")) return Integer.valueOf(0);
+                            if (n.equals("equals")) return Boolean.FALSE;
+                            return deepStub(m2.getReturnType());
+                        }
+                    });
+            miF.set(singleton, proxy);
+            System.out.println("M3-man: v19 ATM 早预填 ✓");
+        } catch (Throwable t) {
+            System.out.println("M3-man: v19 ATM 早预填失败 = " + t);
+        }
+    }
+
     static void manualAttach(Object act) throws Exception {
+        prefillAtmEarly();
         Class<?> ac = act.getClass();
         /* v28 ★★★：填 mBase（attachBaseContext 等价物——不调真 attach，
          * 反射直填 mBase 字段=MiniContext）。onResume 的

@@ -1,10 +1,10 @@
 {
   "files": [
     {
-      "name": "bootstrap-10311310.bin",
+      "name": "bootstrap-10311330.bin",
       "inner": "/system/framework/bootstrap.jar",
-      "md5": "4f09c3bf5e338ab620d56c6d0af8ea64",
-      "size": 57172
+      "md5": "125a7154bb14d69fbe360763fbdc90a1",
+      "size": 59104
     },
     {
       "name": "libtvmbridge.so",
@@ -13,6 +13,6 @@
       "size": 77584
     }
   ],
-  "ver": 10311310,
-  "note": "hotfix 10311310：PackageManager 最小壳 + 补齐 ROM 缺失 native（BinderInternal.handleGc 等）"
+  "ver": 10311330,
+  "note": "hotfix 10311330：APK DexClassLoader（内部类解析）+ ATM 早预填（v94b 主题初始化）"
 }

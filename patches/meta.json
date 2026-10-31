@@ -1,18 +1,18 @@
 {
   "files": [
     {
-      "name": "bootstrap-10302324.bin",
+      "name": "bootstrap-10311250.bin",
       "inner": "/system/framework/bootstrap.jar",
-      "md5": "887d412239f9590cfbbed36a8c67e9c3",
-      "size": 48148
+      "md5": "d5ce4809d8a659d473c3dd4e6305108a",
+      "size": 47788
     },
     {
       "name": "libtvmbridge.so",
       "inner": "/system/lib64/libtvmbridge.so",
-      "md5": "610af21590db65e326a7043e9ec8a073",
-      "size": 52952
+      "md5": "f282f946fc7dd7d9fbab67c2649460e6",
+      "size": 69616
     }
   ],
-  "ver": 10302324,
-  "note": "hotfix 10302324"
+  "ver": 10311250,
+  "note": "hotfix 10311250：v17 图形族（ColorSpace/Canvas/Matrix/Path/Paint 全族 ROM 实测描述符）"
 }

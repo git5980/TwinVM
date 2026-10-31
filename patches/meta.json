@@ -1,18 +1,18 @@
 {
   "files": [
     {
-      "name": "bootstrap-10311250.bin",
+      "name": "bootstrap-10311310.bin",
       "inner": "/system/framework/bootstrap.jar",
-      "md5": "d5ce4809d8a659d473c3dd4e6305108a",
-      "size": 47788
+      "md5": "4f09c3bf5e338ab620d56c6d0af8ea64",
+      "size": 57172
     },
     {
       "name": "libtvmbridge.so",
       "inner": "/system/lib64/libtvmbridge.so",
-      "md5": "f282f946fc7dd7d9fbab67c2649460e6",
-      "size": 69616
+      "md5": "466da21a5cb3597d8442e0e2dad7b9c1",
+      "size": 77584
     }
   ],
-  "ver": 10311250,
-  "note": "hotfix 10311250：v17 图形族（ColorSpace/Canvas/Matrix/Path/Paint 全族 ROM 实测描述符）"
+  "ver": 10311310,
+  "note": "hotfix 10311310：PackageManager 最小壳 + 补齐 ROM 缺失 native（BinderInternal.handleGc 等）"
 }

@@ -278,7 +278,13 @@ public class MiniContext extends ContextWrapper {
     @Override public String getPackageName() { return "com.twinvm.demo"; }
     @Override public String getOpPackageName() { return "com.twinvm.demo"; }
     @Override public int checkPermission(String perm, int pid, int uid) { return -1; }   /* v78: 语义统一 DENIED */
-    @Override public android.content.pm.PackageManager getPackageManager() { return null; }
+    /* v18 ★：Button.useWearMaterial3Style → getPackageManager().hasSystemFeature
+     * on null（13:14 设备日志）。guest 无真实 PM：给最小壳（无特性/空查询）。 */
+    private android.content.pm.PackageManager mPm;
+    @Override public android.content.pm.PackageManager getPackageManager() {
+        if (mPm == null) mPm = new MiniPackageManager();
+        return mPm;
+    }
     @Override public java.io.File getFilesDir() { return new java.io.File("/data/local/tmp"); }
     @Override public ClassLoader getClassLoader() { return MiniContext.class.getClassLoader(); }
     @Override public Context createConfigurationContext(android.content.res.Configuration c) { return this; }

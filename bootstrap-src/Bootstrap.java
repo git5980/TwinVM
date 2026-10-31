@@ -541,12 +541,12 @@ public class Bootstrap {
                     /* Window 基类字段：mContext（构造里唯一的必填） */
                     Class<?> wC = Class.forName("android.view.Window");
                     java.lang.reflect.Field fmc = wC.getDeclaredField("mContext");
-                    fmc.setAccessible(true); fmc.set(pw, mc);
+                    fmc.setAccessible(true); fmc.set(pw, act);   /* v18：Activity（有 Theme）*/
                     /* PhoneWindow.mLayoutInflater */
                     Object li = null;
                     try {
                         li = Class.forName("com.android.internal.policy.PhoneLayoutInflater")
-                                .getConstructor(Context.class).newInstance(mc);
+                                .getConstructor(Context.class).newInstance((Context) act);
                     } catch (Throwable tli) {
                         System.out.println("M3-man: v94b PhoneLayoutInflater = " + tli);
                     }
@@ -557,7 +557,7 @@ public class Bootstrap {
                     Class<?> dvC = Class.forName("com.android.internal.policy.DecorView");
                     Object dv = uc3.getMethod("allocateInstance", Class.class).invoke(U3, dvC);
                     /* mContentParent：FrameLayout 直造（公有类） */
-                    android.widget.FrameLayout fpl = new android.widget.FrameLayout(mc);
+                    android.widget.FrameLayout fpl = new android.widget.FrameLayout((Context) act);
                     /* 字段写入（AOSP :223/:231 核实：mDecor/mContentParent） */
                     java.lang.reflect.Field fd = pwC.getDeclaredField("mDecor");
                     fd.setAccessible(true); fd.set(pw, dv);

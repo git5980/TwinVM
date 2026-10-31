@@ -44,6 +44,25 @@ static JNIEXPORT jlong JNICALL
 sp_get_long(JNIEnv* env, jclass c, jstring k, jlong d) {
     (void)env; (void)c; (void)k; return d;
 }
+/* v18 ★ ROM API36 双 API：native_find/native_get(long handle) 族
+ * （旧桥只有 String 版；SystemProperties.get 新链会走 handle 版） */
+static JNIEXPORT jlong JNICALL
+sp_find(JNIEnv* env, jclass c, jstring k) { (void)env; (void)c; (void)k; return 1; }
+static JNIEXPORT jstring JNICALL
+sp_get_handle(JNIEnv* env, jclass c, jlong h) {
+    (void)c; (void)h; return (*env)->NewStringUTF(env, "x");   /* 非空（Build 解析安全） */
+}
+static JNIEXPORT jboolean JNICALL
+sp_get_boolean_h(JNIEnv* env, jclass c, jlong h, jboolean d) { (void)env; (void)c; (void)h; return d; }
+static JNIEXPORT jint JNICALL
+sp_get_int_h(JNIEnv* env, jclass c, jlong h, jint d) { (void)env; (void)c; (void)h; return d; }
+static JNIEXPORT jlong JNICALL
+sp_get_long_h(JNIEnv* env, jclass c, jlong h, jlong d) { (void)env; (void)c; (void)h; return d; }
+static JNIEXPORT void JNICALL
+sp_change_cb(JNIEnv* env, jclass c) { (void)env; (void)c; }
+static JNIEXPORT void JNICALL
+sp_report(JNIEnv* env, jclass c) { (void)env; (void)c; }
+
 static JNIEXPORT jstring JNICALL
 sp_get_str(JNIEnv* env, jclass c, jstring k) {
     (void)c; (void)k;
@@ -273,11 +292,18 @@ static const JNINativeMethod kLog[] = {
     { "logger_entry_max_payload_native", "()I",                       (void*)b_logger_max },
 };
 static const JNINativeMethod kSP[] = {
-    { "native_get_boolean", "(Ljava/lang/String;Z)Z",   (void*)sp_get_boolean },
-    { "native_get",         "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", (void*)sp_get },
-    { "native_get_int",     "(Ljava/lang/String;I)I",   (void*)sp_get_int },
-    { "native_get_long",    "(Ljava/lang/String;J)J",   (void*)sp_get_long },
-    { "native_set",         "(Ljava/lang/String;Ljava/lang/String;)V", (void*)sp_set },
+    { "native_find",                 "(Ljava/lang/String;)J",  (void*)sp_find },
+    { "native_get",                  "(J)Ljava/lang/String;",  (void*)sp_get_handle },
+    { "native_get",                  "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", (void*)sp_get },
+    { "native_get_boolean",          "(JZ)Z",                  (void*)sp_get_boolean_h },
+    { "native_get_boolean",          "(Ljava/lang/String;Z)Z", (void*)sp_get_boolean },
+    { "native_get_int",              "(JI)I",                  (void*)sp_get_int_h },
+    { "native_get_int",              "(Ljava/lang/String;I)I", (void*)sp_get_int },
+    { "native_get_long",             "(JJ)J",                  (void*)sp_get_long_h },
+    { "native_get_long",             "(Ljava/lang/String;J)J", (void*)sp_get_long },
+    { "native_set",                  "(Ljava/lang/String;Ljava/lang/String;)V", (void*)sp_set },
+    { "native_add_change_callback",  "()V",                    (void*)sp_change_cb },
+    { "native_report_sysprop_change","()V",                    (void*)sp_report },
 };
 static const JNINativeMethod kTrace[] = {
     { "nativeIsTagEnabled",            "(J)Z",      (void*)tr_isTagEnabled },
@@ -399,6 +425,7 @@ static JNIEXPORT jobject JNICALL tvm_stub_null(JNIEnv* e, jclass c, ...) { (void
 static JNIEXPORT jlong   JNICALL tvm_stub_finalizer(JNIEnv* e, jclass c, ...) { (void)e; (void)c; return tvm_finalizer_addr(); }
 
 #include "gen_registry.h"
+#include "gen_missing.h"
 
 /* ── v17 ★★ ColorSpace 族（ROM framework.dex 实测：android/graphics/ColorSpace$Rgb$Native）
  * 案：ColorSpace.<clinit>:1603 → new Rgb(SRGB_TRANSFER_PARAMETERS)
@@ -751,7 +778,8 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
     /* v4 逐条容错注册（14:54 案教训）*/
     int i;
     jclass cls[] = { log, sp, tr, sc, bd, bi, el, mq, am, rn, pn, tf, am, cs,
-                     bc, cv, mx, mxe, pth };
+                     bc, cv, mx, mxe, pth,
+                     tr, sc, bd, bi, el, mq, am, tf };
     /* v16c ★（23:14 案）：cls 只扩了 tabs 没扩——kPaint/kTypeface/kAM2
      * 注册到越界垃圾槽 → AM JNIR 全家失败 → 类链接失败洪流 → SEGV。
      * kAM2 与 kAM 同类（AssetManager）——复用 am 槽。 */
@@ -763,7 +791,15 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
                                       kGen_android_graphics_Canvas,
                                       kGen_android_graphics_Matrix,
                                       kGen_android_graphics_Matrix_ExtraNatives,
-                                      kGen_android_graphics_Path };
+                                      kGen_android_graphics_Path,
+                                      kMiss_android_os_Trace,
+                                      kMiss_android_os_SystemClock,
+                                      kMiss_android_os_Binder,
+                                      kMiss_com_android_internal_os_BinderInternal,
+                                      kMiss_android_util_EventLog,
+                                      kMiss_android_os_MessageQueue,
+                                      kMiss_android_content_res_AssetManager,
+                                      kMiss_android_graphics_Typeface };
     int cnts[] = { (int)(sizeof(kLog)/sizeof(kLog[0])),
                    (int)(sizeof(kSP)/sizeof(kSP[0])),
                    (int)(sizeof(kTrace)/sizeof(kTrace[0])),
@@ -782,9 +818,17 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
                    (int)(sizeof(kGen_android_graphics_Canvas)/sizeof(JNINativeMethod)),
                    (int)(sizeof(kGen_android_graphics_Matrix)/sizeof(JNINativeMethod)),
                    (int)(sizeof(kGen_android_graphics_Matrix_ExtraNatives)/sizeof(JNINativeMethod)),
-                   (int)(sizeof(kGen_android_graphics_Path)/sizeof(JNINativeMethod)) };
+                   (int)(sizeof(kGen_android_graphics_Path)/sizeof(JNINativeMethod)),
+                   (int)(sizeof(kMiss_android_os_Trace)/sizeof(JNINativeMethod)),
+                   (int)(sizeof(kMiss_android_os_SystemClock)/sizeof(JNINativeMethod)),
+                   (int)(sizeof(kMiss_android_os_Binder)/sizeof(JNINativeMethod)),
+                   (int)(sizeof(kMiss_com_android_internal_os_BinderInternal)/sizeof(JNINativeMethod)),
+                   (int)(sizeof(kMiss_android_util_EventLog)/sizeof(JNINativeMethod)),
+                   (int)(sizeof(kMiss_android_os_MessageQueue)/sizeof(JNINativeMethod)),
+                   (int)(sizeof(kMiss_android_content_res_AssetManager)/sizeof(JNINativeMethod)),
+                   (int)(sizeof(kMiss_android_graphics_Typeface)/sizeof(JNINativeMethod)) };
     int okReg = 0, badReg = 0;
-    for (int t = 0; t < 19; t++) {
+    for (int t = 0; t < 27; t++) {
         if (!cls[t]) {
             if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
             fprintf(stdout, "[bridge] class[%d] FindClass FAILED（跳过）\n", t);
@@ -803,6 +847,6 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
         if (badHere && t >= 13)
             fprintf(stdout, "[bridge] table[%d] %d/%d 条注册失败\n", t, badHere, cnts[t]);
     }
-    fprintf(stdout, "[bridge] JNI 注册完成: %d ok / %d fail（19 张表）\n", okReg, badReg);
+    fprintf(stdout, "[bridge] JNI 注册完成: %d ok / %d fail（27 张表）\n", okReg, badReg);
     return JNI_VERSION_1_6;
 }

@@ -6,6 +6,8 @@ cd /home/z/my-project/twinvm
 VER=$(date +%m%d%H%M)
 TAG="hotfix-${VER}"
 
+# 只保留最新热更包（2026-10-31 起）：旧 bin 全部清掉（git 历史/旧 tag 仍可查）
+rm -f patches/bootstrap-*.bin patches/bootstrap.bin
 cp "${1:?用法: publish.sh <bootstrap.jar> [so]}" "patches/bootstrap-${VER}.bin"
 [ -n "$2" ] && cp "$2" patches/libtvmbridge.so
 
